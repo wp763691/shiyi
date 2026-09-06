@@ -1,7 +1,9 @@
 // 内置终端代理：用系统 script 分配 PTY 运行 tmux attach，通过 SSE 与浏览器通信
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const TMUX = '/opt/homebrew/bin/tmux';
@@ -15,14 +17,16 @@ export function openTmuxTerminal(sessionName) {
   }
   const id = randomUUID();
   const bridge = path.join(moduleDir, 'pty_bridge.py');
+  const ctrl = path.join(os.tmpdir(), `zyin-ctrl-${id}`);
   const child = spawn(PYTHON, [bridge, '34', '100', TMUX, 'attach', '-t', sessionName], {
-    env: { ...process.env, TERM: 'xterm-256color' },
+    env: { ...process.env, TERM: 'xterm-256color', ZYIN_CTRL: ctrl },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const rec = {
     id,
     name: sessionName,
     child,
+    ctrl,
     res: null,
     queue: [],
     alive: true,
@@ -48,6 +52,20 @@ export function openTmuxTerminal(sessionName) {
     sessions.delete(id);
   });
   return { ok: true, id, name: sessionName };
+}
+
+export async function resizeTerminal(id, cols, rows) {
+  const rec = sessions.get(id);
+  if (!rec || !rec.alive) return { ok: false, error: '终端已结束' };
+  const c = Math.max(20, Math.min(500, Math.floor(Number(cols) || 80)));
+  const r = Math.max(5, Math.min(200, Math.floor(Number(rows) || 24)));
+  try {
+    await writeFile(rec.ctrl, `${r} ${c}`);
+    process.kill(rec.child.pid, 'SIGWINCH');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
 }
 
 export function writeTerminalInput(id, b64) {

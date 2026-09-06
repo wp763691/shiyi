@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { scanAllSessions, trashSession } from './lib/sessions.mjs';
 import { listTerminalWindows, runningClaudeProcs, focusWindow, resumeSession } from './lib/terminal.mjs';
-import { attachTmuxSession } from './lib/terminal.mjs';
+import { attachTmuxSession, terminateProcess } from './lib/terminal.mjs';
 import { scanSkills, trashSkill } from './lib/skills.mjs';
 import {
   scanRules,
@@ -19,7 +19,13 @@ import {
   checkMcp,
 } from './lib/registry.mjs';
 import { listTmuxAgents } from './lib/tmux.mjs';
-import { openTmuxTerminal, writeTerminalInput, closeTerminal, attachStream } from './lib/termproxy.mjs';
+import {
+  openTmuxTerminal,
+  writeTerminalInput,
+  resizeTerminal,
+  closeTerminal,
+  attachStream,
+} from './lib/termproxy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -95,7 +101,7 @@ async function buildState() {
   }
 
   const windows = (term.windows || []).map((w) => {
-    const proc = (procsRes.procs || []).find((p) => normalizeTty(p.tty) === normalizeTty(w.tty));
+      const proc = (procsRes.procs || []).find((p) => normalizeTty(p.tty) === normalizeTty(w.tty));
     const tool = proc?.tool || null;
     const active = tool && proc?.cwd && byCwd.get(`${tool}::${proc.cwd}`);
     return {
@@ -104,6 +110,7 @@ async function buildState() {
       wname: w.wname || '',
       title: w.title || '',
       tty: w.tty,
+      procPid: proc?.pid || null,
       tool,
       running: Boolean(proc),
       session: active
@@ -241,6 +248,20 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      if (body.action === 'terminate') {
+        try {
+          if (body.mode === 'tmux') {
+            await execFileP('/opt/homebrew/bin/tmux', ['kill-session', '-t', String(body.name)], { timeout: 6000 });
+            sendJson(res, 200, { ok: true });
+          } else {
+            const out = await terminateProcess(body.pid);
+            sendJson(res, out.ok ? 200 : 500, out);
+          }
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
       sendJson(res, 400, { ok: false, error: '未知动作' });
       return;
     }
@@ -252,6 +273,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && url.pathname === '/api/terminal-input') {
       const body = await readBody(req);
+      if (body.resize) {
+        const out = await resizeTerminal(body.id, body.resize.cols, body.resize.rows);
+        if (!body.data) {
+          sendJson(res, out.ok ? 200 : 500, out);
+          return;
+        }
+      }
       const out = writeTerminalInput(body.id, body.data || '');
       sendJson(res, out.ok ? 200 : 500, out);
       return;

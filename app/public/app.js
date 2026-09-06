@@ -30,17 +30,20 @@ const MODAL_COMMAND = document.getElementById('modalCommand');
 const MODAL_COPY = document.getElementById('modalCopy');
 const MODAL_OK = document.getElementById('modalOk');
 const MODAL_CLOSE = document.getElementById('modalClose');
-const TERM_BACKDROP = document.getElementById('termBackdrop');
-const TERM_TITLE = document.getElementById('termTitle');
-const TERM_HOST = document.getElementById('termHost');
-const TERM_CLOSE = document.getElementById('termClose');
+const RAIL_TOGGLE = document.getElementById('railToggle');
+const WB_DRAWER = document.getElementById('wbDrawer');
+const DRAWER_CLOSE = document.getElementById('drawerClose');
+const TERM_TABS = document.getElementById('termTabs');
+const TERM_STAGE = document.getElementById('termStage');
+const TERM_EMPTY = document.getElementById('termEmpty');
+const STATUS_LEFT = document.getElementById('statusLeft');
+const STATUS_RIGHT = document.getElementById('statusRight');
 let configView = 'rules';
 const mcpStatus = new Map(); // key -> {state:'ok'|'fail'|'checking'|'skip', detail}
-let term = null;
-let termId = null;
-let termBuf = '';
-let termTimer = null;
-let termBusy = false;
+let drawerOpen = false;
+let termSessions = [];
+let activeTermName = null;
+let fitTimer = null;
 
 function mcpKey(x) {
   return `${x.tool}|${x.scope}|${x.name}|${x.sourceFile || x.path || ''}`;
@@ -51,6 +54,7 @@ let skillScope = 'all';
 
 function activateTab(name) {
   if (!['sessions', 'skills', 'config'].includes(name)) name = 'sessions';
+  document.body.dataset.tab = name;
   for (const btn of [TAB_SESSIONS, TAB_SKILLS, TAB_CONFIG]) {
     const on = btn.dataset.tab === name;
     btn.classList.toggle('active', on);
@@ -67,6 +71,16 @@ function activateTab(name) {
     renderLive();
     renderDirFilter();
     renderHistory();
+    // 进入会话页：自动展开列表（运行中展开、历史收起）
+    const panels = document.querySelectorAll('.mini-panel');
+    const running = panels[0];
+    const history = panels[1];
+    running.classList.remove('collapsed');
+    history.classList.add('collapsed');
+    document.querySelectorAll('.mini-search').forEach((box) => { box.hidden = true; });
+    document.querySelectorAll('[data-search]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    setDrawer(true);
+    setTimeout(scheduleFit, 60);
   } else if (name === 'skills') {
     renderSkills();
   } else {
@@ -196,6 +210,25 @@ function renderLive() {
     row.appendChild(main);
 
     const actions = el('div', 'row-actions');
+    const terminateBtn = el('button', 'btn danger small', '终止');
+    terminateBtn.onclick = () => {
+      const label = w.tmux ? `tmux 会话「${w.sessionName}」` : `进程 ${w.procPid} 的 ${w.tool === 'codex' ? 'Codex' : 'Claude'} 会话`;
+      showConfirm(
+        `终止${label}？`,
+        w.tmux
+          ? '将执行 tmux kill-session，会话中的 claude/codex 会被结束。历史 transcript 仍保留，可随时恢复。'
+          : '将向该会话进程发送结束信号。历史 transcript 仍保留，可随时恢复。',
+        async () => {
+          await act({
+            action: 'terminate',
+            mode: w.tmux ? 'tmux' : 'process',
+            name: w.sessionName,
+            pid: w.procPid,
+          });
+        }
+      );
+    };
+    actions.appendChild(terminateBtn);
     if (w.tmux) {
       const embedBtn = el('button', 'btn', '内置终端');
       embedBtn.onclick = () => openEmbeddedTmux(w.sessionName);
@@ -541,6 +574,10 @@ async function act(payload) {
         hideModal();
         toast('已移至回收目录（可从那里找回）');
         refresh();
+      } else if (payload.action === 'terminate') {
+        hideModal();
+        toast('已终止会话');
+        refresh();
       } else if (payload.action === 'resume') toast('已在 iTerm 新标签恢复会话');
       else toast('已切换到该窗口');
     }
@@ -590,7 +627,7 @@ async function doMcpCheck(x) {
   if (st.detail) toast(`${x.name}: ${st.detail}`, st.state === 'ok' ? false : st.state === 'fail');
 }
 
-// ---------- 内置终端（xterm.js + tmux） ----------
+// ---------- 终端工作台（xterm.js + tmux，多标签） ----------
 function bytesToB64(bytes) {
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -599,48 +636,119 @@ function bytesToB64(bytes) {
   return btoa(bin);
 }
 
-function flushTermInput() {
-  if (!termBuf || !termId) return;
-  const data = termBuf;
-  termBuf = '';
+function flushRecInput(rec) {
+  if (!rec.buf || !rec.id) return;
+  const data = rec.buf;
+  rec.buf = '';
   fetch('/api/terminal-input', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: termId, data: bytesToB64(new TextEncoder().encode(data)) }),
+    body: JSON.stringify({ id: rec.id, data: bytesToB64(new TextEncoder().encode(data)) }),
   }).catch(() => {});
 }
 
-function queueTermInput(data) {
-  if (!termId) return;
-  termBuf += data;
-  if (!termTimer) termTimer = setInterval(flushTermInput, 25);
+function queueRecInput(rec, data) {
+  if (!rec.id) return;
+  rec.buf = (rec.buf || '') + data;
+  if (!rec.timer) rec.timer = setInterval(() => flushRecInput(rec), 25);
 }
 
-function termCleanup(message) {
-  if (termTimer) { clearInterval(termTimer); termTimer = null; }
-  if (term) term.write(`\r\n\x1b[0m${message || '[会话已结束]'}`);
-  termId = null;
+function activeRec() {
+  return termSessions.find((r) => r.name === activeTermName) || null;
+}
+
+function updateTermStatus() {
+  const rec = activeRec();
+  if (rec) {
+    STATUS_LEFT.textContent = `tmux · ${rec.name} · ${rec.alive ? '已连接' : '已断开（后台仍运行）'}`;
+  } else {
+    STATUS_LEFT.textContent = '就绪';
+  }
+}
+
+function renderTermTabs() {
+  TERM_TABS.querySelectorAll('.term-tab').forEach((el) => el.remove());
+  TERM_EMPTY.hidden = termSessions.length > 0;
+  const hint = document.getElementById('tabsHint');
+  if (hint) hint.hidden = termSessions.length > 0;
+  for (const rec of termSessions) {
+    const btn = document.createElement('button');
+    btn.className = 'term-tab' + (rec.name === activeTermName ? ' active' : '');
+    btn.type = 'button';
+    const dot = document.createElement('i');
+    dot.className = rec.alive ? 'tdot on' : 'tdot';
+    const label = document.createElement('span');
+    label.textContent = rec.name;
+    const close = document.createElement('b');
+    close.textContent = '×';
+    close.title = '关闭视图（tmux 仍在后台）';
+    close.onclick = (e) => { e.stopPropagation(); closeTermTab(rec.name); };
+    btn.append(dot, label, close);
+    btn.onclick = () => activateTerminal(rec.name);
+    TERM_TABS.insertBefore(btn, hint);
+  }
+}
+
+function activateTerminal(name) {
+  const rec = termSessions.find((r) => r.name === name);
+  if (!rec) return;
+  activeTermName = name;
+  for (const r of termSessions) {
+    r.slot.style.display = r.name === name ? 'block' : 'none';
+  }
+  renderTermTabs();
+  rec.term.focus();
+  updateTermStatus();
+  fitActiveTerminal();
+}
+
+function termTheme() {
+  return {
+    background: '#ffffff',
+    foreground: '#1d2430',
+    cursor: '#3455d1',
+    cursorAccent: '#ffffff',
+    selectionBackground: '#c9d7f7',
+    black: '#24292e', red: '#c3312c', green: '#116b46', yellow: '#8a5b00',
+    blue: '#3455d1', magenta: '#6f42c1', cyan: '#0b7285', white: '#eef0f4',
+    brightBlack: '#57606a', brightRed: '#d9524c', brightGreen: '#1a8f5f',
+    brightYellow: '#b07800', brightBlue: '#5b79e8', brightMagenta: '#8c63d9',
+    brightCyan: '#149aa8', brightWhite: '#ffffff',
+  };
 }
 
 async function openEmbeddedTmux(name) {
-  if (termBusy) return;
-  termBusy = true;
-  TERM_TITLE.textContent = `tmux · ${name}`;
-  TERM_HOST.innerHTML = '';
-  TERM_BACKDROP.hidden = false;
+  const exists = termSessions.find((r) => r.name === name);
+  if (exists) { activateTerminal(name); return; }
 
-  const T = new Terminal({
-    cols: 100,
-    rows: 34,
+  const rec = {
+    name,
+    id: null,
+    alive: false,
+    buf: '',
+    timer: null,
+    reader: null,
+    slot: null,
+    term: null,
+  };
+  rec.slot = document.createElement('div');
+  rec.slot.className = 'term-slot';
+  TERM_STAGE.appendChild(rec.slot);
+  const term = new Terminal({
     fontFamily: '"SF Mono", Menlo, Monaco, monospace',
     fontSize: 13,
     cursorBlink: true,
-    theme: { background: '#10131c', foreground: '#e2e6ef', cursor: '#7fa8ff', selectionBackground: '#33415f' },
+    theme: termTheme(),
   });
-  term = T;
-  T.open(TERM_HOST);
-  T.focus();
-  T.onData((d) => queueTermInput(d));
+  rec.term = term;
+  term.open(rec.slot);
+  termSessions.push(rec);
+  activeTermName = name;
+  renderTermTabs();
+  activateTerminal(name);
+  setDrawer(false);
+  term.onData((d) => queueRecInput(rec, d));
+  fitActiveTerminal();
 
   try {
     const res = await fetch('/api/terminal-open', {
@@ -650,23 +758,23 @@ async function openEmbeddedTmux(name) {
     });
     const data = await res.json();
     if (!data.ok || !data.id) {
-      term.write(`\r\n[打开失败] ${data.error || '未知错误'}`);
-      termBusy = false;
+      rec.term.write(`\r\n[打开失败] ${data.error || '未知错误'}`);
+      updateTermStatus();
       return;
     }
-    termId = data.id;
-    term.write('\x1b[2J\x1b[H\x1b[?25h');
-    connectTermStream(data.id);
+    rec.id = data.id;
+    rec.alive = true;
+    updateTermStatus();
+    connectTermStream(rec);
   } catch (e) {
-    term.write(`\r\n[连接失败] ${e.message}`);
+    rec.term.write(`\r\n[连接失败] ${e.message}`);
   }
-  termBusy = false;
 }
 
-async function connectTermStream(id) {
+async function connectTermStream(rec) {
   try {
-    const res = await fetch(`/api/terminal-stream/${encodeURIComponent(id)}`);
-    if (!res.ok || !res.body) return termCleanup();
+    const res = await fetch(`/api/terminal-stream/${encodeURIComponent(rec.id)}`);
+    if (!res.ok || !res.body) { rec.alive = false; updateTermStatus(); return; }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -679,39 +787,90 @@ async function connectTermStream(id) {
         const block = buffer.slice(0, idx);
         buffer = buffer.slice(idx + 2);
         let payload = '';
+        let closed = false;
         for (const line of block.split('\n')) {
           if (line.startsWith('data: ')) payload += line.slice(6);
-          if (line.startsWith('event: close')) { termCleanup(); return; }
+          if (line.startsWith('event: close')) closed = true;
         }
-        if (payload && term) {
+        if (closed) {
+          rec.alive = false;
+          rec.term.write('\r\n\x1b[0m[会话已断开，tmux 仍在后台；可点标签重新打开]');
+          updateTermStatus();
+          renderTermTabs();
+          return;
+        }
+        if (payload) {
           try {
             const raw = atob(payload);
             const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
-            term.write(bytes);
+            rec.term.write(bytes);
           } catch { /* 忽略坏帧 */ }
         }
       }
     }
-    termCleanup();
+    rec.alive = false;
+    updateTermStatus();
   } catch {
-    termCleanup('[连接中断]');
+    rec.alive = false;
+    updateTermStatus();
   }
 }
 
-function closeEmbeddedTerm() {
-  if (termId) {
+function fitActiveTerminal() {
+  const rec = activeRec();
+  if (!rec || rec.slot.clientWidth === 0) return;
+  const cw = 8.1;
+  const ch = 18.5;
+  const cols = Math.max(20, Math.floor(rec.slot.clientWidth / cw));
+  const rows = Math.max(5, Math.floor(rec.slot.clientHeight / ch));
+  try {
+    rec.term.resize(cols, rows);
+    STATUS_RIGHT.textContent = `${cols}×${rows} · ⌘L 列表 · ⌘1-9 切换标签`;
+  } catch { /* 忽略 */ }
+  if (rec.id) {
+    fetch('/api/terminal-input', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: rec.id, data: '', resize: { cols, rows } }),
+    }).catch(() => {});
+  }
+}
+
+function scheduleFit() {
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(fitActiveTerminal, 120);
+}
+
+function closeTermTab(name) {
+  const idx = termSessions.findIndex((r) => r.name === name);
+  if (idx < 0) return;
+  const rec = termSessions[idx];
+  if (rec.timer) clearInterval(rec.timer);
+  if (rec.id) {
     fetch('/api/terminal-close', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: termId }),
+      body: JSON.stringify({ id: rec.id }),
     }).catch(() => {});
   }
-  if (termTimer) { clearInterval(termTimer); termTimer = null; }
-  termId = null;
-  termBuf = '';
-  try { term?.dispose(); } catch { /* 忽略 */ }
-  term = null;
-  TERM_BACKDROP.hidden = true;
+  try { rec.reader?.cancel(); } catch { /* 忽略 */ }
+  try { rec.term.dispose(); } catch { /* 忽略 */ }
+  rec.slot.remove();
+  termSessions.splice(idx, 1);
+  if (activeTermName === name) {
+    activeTermName = termSessions.length ? termSessions[0].name : null;
+  }
+  renderTermTabs();
+  if (activeTermName) activateTerminal(activeTermName);
+  updateTermStatus();
+}
+
+function setDrawer(open) {
+  drawerOpen = open;
+  WB_DRAWER.classList.toggle('open', open);
+  WB_DRAWER.setAttribute('aria-hidden', String(!open));
+  RAIL_TOGGLE.setAttribute('aria-pressed', String(open));
+  scheduleFit();
 }
 
 function showResumeModal(text, command) {
@@ -785,9 +944,41 @@ async function refresh() {
 TAB_SESSIONS.addEventListener('click', () => activateTab('sessions'));
 TAB_SKILLS.addEventListener('click', () => activateTab('skills'));
 TAB_CONFIG.addEventListener('click', () => activateTab('config'));
-TERM_CLOSE.addEventListener('click', closeEmbeddedTerm);
+for (const head of document.querySelectorAll('.mini-head')) {
+  head.addEventListener('click', (e) => {
+    if (e.target.closest('input, select, button, .count')) return;
+    head.closest('.mini-panel').classList.toggle('collapsed');
+    scheduleFit();
+  });
+}
+for (const btn of document.querySelectorAll('[data-search]')) {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const panel = btn.closest('.mini-panel');
+    const box = panel.querySelector('.mini-search');
+    const show = box.hidden;
+    box.hidden = !show;
+    btn.setAttribute('aria-expanded', String(show));
+    if (show) {
+      requestAnimationFrame(() => { const inp = box.querySelector('input,select'); inp?.focus(); });
+    }
+    scheduleFit();
+  });
+}
+RAIL_TOGGLE.addEventListener('click', () => setDrawer(!drawerOpen));
+DRAWER_CLOSE.addEventListener('click', () => setDrawer(false));
+if (window.ResizeObserver) {
+  new ResizeObserver(scheduleFit).observe(TERM_STAGE);
+}
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !TERM_BACKDROP.hidden) closeEmbeddedTerm();
+  if (!e.metaKey && !e.ctrlKey) return;
+  const key = e.key.toLowerCase();
+  if (key === 'l') { e.preventDefault(); setDrawer(!drawerOpen); return; }
+  if (key === 'k' && !e.shiftKey) { e.preventDefault(); setDrawer(false); return; }
+  if (/^[1-9]$/.test(key) && !e.shiftKey) {
+    const n = Number(key) - 1;
+    if (termSessions[n]) { e.preventDefault(); activateTerminal(termSessions[n].name); }
+  }
 });
 document.querySelector('.tabbar').addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;

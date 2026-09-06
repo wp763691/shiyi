@@ -98,6 +98,28 @@ export async function runningClaudeProcs() {
   }
 }
 
+// 终止运行中的 claude/codex 进程（pid 需通过命令特征校验）
+export async function terminateProcess(pid) {
+  const n = Number(pid);
+  if (!Number.isInteger(n) || n <= 0) return { ok: false, error: '非法 pid' };
+  try {
+    const { stdout } = await execFileP('/bin/ps', ['-p', String(n), '-o', 'command='], { timeout: 4000 });
+    const cmd = stdout.trim();
+    const tool = classifyAgent(cmd);
+    if (!tool) return { ok: false, error: '该进程不是 claude/codex 会话，拒绝操作' };
+    if (/shiyi|server\.mjs|pty_bridge/i.test(cmd)) return { ok: false, error: '拒绝终止拾忆自身进程' };
+    process.kill(n, 'SIGTERM');
+    await new Promise((r) => setTimeout(r, 1200));
+    try {
+      process.kill(n, 0);
+      process.kill(n, 'SIGKILL');
+    } catch { /* 已退出 */ }
+    return { ok: true, tool };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
 // 命令行里出现的是真正的 claude / codex 可执行文件（排除 claude-mermaid 这类辅助进程）
 function classifyAgent(command) {
   if (!command || /grep|shiyi|拾忆|server\.mjs|claude-mermaid/i.test(command)) return null;

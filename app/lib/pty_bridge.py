@@ -6,6 +6,7 @@ import fcntl
 import os
 import pty
 import select
+import signal
 import struct
 import sys
 import termios
@@ -13,6 +14,18 @@ import termios
 
 def set_winsize(fd, rows, cols):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+
+def on_winch(signum, frame):
+    ctrl = os.environ.get("ZYIN_CTRL", "")
+    if not ctrl:
+        return
+    try:
+        with open(ctrl) as f:
+            rows, cols = f.read().split()
+        set_winsize(master, int(rows), int(cols))
+    except Exception:
+        pass
 
 
 def main():
@@ -34,6 +47,10 @@ def main():
         pass
     os.write(ready_w, b"1")
     os.close(ready_w)
+    try:
+        signal.signal(signal.SIGWINCH, on_winch)
+    except Exception:
+        pass
 
     stdin = sys.stdin.buffer
     stdout = sys.stdout.buffer

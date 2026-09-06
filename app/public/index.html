@@ -40,33 +40,65 @@
   <main>
     <div id="warnings"></div>
 
-    <!-- ============ 会话 ============ -->
+    <!-- ============ 会话（终端优先工作台） ============ -->
     <section id="panel-sessions" class="tabpanel active" role="tabpanel" aria-labelledby="tab-sessions">
-      <div class="stack">
-        <section class="panel">
-          <div class="panel-head">
-            <h2>正在运行</h2>
-            <span class="count" id="liveCount">0</span>
-            <span class="head-note">iTerm 窗口 ↔ 会话</span>
-            <div class="toolbar">
-              <input id="liveSearch" type="search" placeholder="筛选运行中会话…" autocomplete="off">
-            </div>
-          </div>
-          <div class="rows" id="liveRows"></div>
-        </section>
+      <div class="workbench" id="workbench">
+        <div class="wb-rail" id="wbRail">
+          <button class="rail-btn" id="railToggle" aria-pressed="false" title="会话列表（⌘L）">☰</button>
+        </div>
 
-        <section class="panel">
-          <div class="panel-head">
-            <h2>历史会话</h2>
-            <span class="count" id="historyCount">0</span>
-            <span class="head-note">运行中的会话不在此列</span>
-            <div class="toolbar">
-              <select id="dirFilter" aria-label="按目录筛选"></select>
+        <aside class="wb-drawer" id="wbDrawer" aria-hidden="true">
+          <div class="drawer-head">
+            <strong>会话</strong>
+            <button class="btn small" id="drawerClose">收起 ⌘L</button>
+          </div>
+          <section class="mini-panel">
+            <div class="mini-head" title="点击折叠/展开">
+              <h2>运行中</h2>
+              <span class="count" id="liveCount">0</span>
+              <button class="icon-btn" data-search title="搜索" aria-label="搜索运行中会话">
+                <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.2"/><path d="M10.3 10.3 14 14"/></svg>
+              </button>
+              <i class="chev"></i>
+            </div>
+            <div class="mini-search" hidden>
+              <input id="liveSearch" type="search" placeholder="搜索运行中会话…" autocomplete="off">
+            </div>
+            <div class="rows compact" id="liveRows"></div>
+          </section>
+          <section class="mini-panel">
+            <div class="mini-head" title="点击折叠/展开">
+              <h2>历史</h2>
+              <span class="count" id="historyCount">0</span>
+              <button class="icon-btn" data-search title="搜索" aria-label="搜索历史会话">
+                <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.2"/><path d="M10.3 10.3 14 14"/></svg>
+              </button>
+              <i class="chev"></i>
+            </div>
+            <div class="mini-search" hidden>
+              <select id="dirFilter" aria-label="按目录筛选"><option value="">全部目录</option></select>
               <input id="search" type="search" placeholder="搜索标题、内容、目录…" autocomplete="off">
             </div>
+            <div class="rows compact" id="historyRows"></div>
+          </section>
+        </aside>
+
+        <main class="wb-terminal">
+          <div class="term-tabs" id="termTabs">
+            <span class="tabs-hint" id="tabsHint">没有打开的终端 · 从会话列表点「内置终端」</span>
           </div>
-          <div class="rows" id="historyRows"></div>
-        </section>
+          <div class="term-stage" id="termStage">
+            <div class="term-empty" id="termEmpty">
+              <div class="term-empty-title">拾忆工作台</div>
+              <p>⌘L 呼出会话列表 · 点「内置终端」在此打开 tmux 会话</p>
+              <p>外部 iTerm 的「聚焦窗口 / 恢复会话」功能不受影响</p>
+            </div>
+          </div>
+          <footer class="term-status" id="termStatus">
+            <span id="statusLeft">就绪</span>
+            <span id="statusRight">⌘L 列表 · ⌘1-9 切换标签</span>
+          </footer>
+        </main>
       </div>
     </section>
 
@@ -123,16 +155,6 @@
         <button id="modalOk" class="btn danger" hidden>确认删除</button>
         <button id="modalClose" class="btn">知道了</button>
       </div>
-    </div>
-  </div>
-  <div id="termBackdrop" class="backdrop" hidden>
-    <div class="term-modal">
-      <div class="term-head">
-        <strong id="termTitle">tmux 终端</strong>
-        <span class="head-note">内置终端（实验） · 随时可用 iTerm 接管</span>
-        <button id="termClose" class="btn">关闭</button>
-      </div>
-      <div id="termHost" class="term-host"></div>
     </div>
   </div>
   <script src="/vendor/xterm/xterm.js"></script>
