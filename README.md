@@ -65,8 +65,23 @@ open "app/macos/.build/拾忆.app"
 │   ├── architecture.md     # 架构与数据源说明
 │   └── requirements.md     # 早期产品需求稿（存档）
 └── scripts/
-    └── setup.sh            # 本地依赖安装
+    ├── setup.sh                    # 本地依赖安装
+    └── migrate-codex-path.mjs      # 目录改名后迁移 Codex 会话路径
 ```
+
+## 目录改名后怎么办
+
+如果移动了项目所在的绝对路径（例如 `ZYin` → `Shiyi`）：
+
+1. 在 `app/path-aliases.json`（不入库，参考 `app/path-aliases.example.json`）里登记 `old → new` 映射，面板会立即按新路径显示与恢复历史会话；
+2. 退出所有相关 Codex 会话后，运行物理迁移（把会话文件里记录的旧路径改写为新路径）：
+
+   ```bash
+   node scripts/migrate-codex-path.mjs /旧/绝对/路径 /新/绝对/路径
+   # 先加 --dry 预检
+   ```
+
+> 正在运行的 Codex 会话会持有会话文件句柄，迁移前必须先退出，避免数据损坏。
 
 ## 隐私与安全
 

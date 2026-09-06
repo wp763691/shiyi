@@ -8,5 +8,6 @@ app/venv-iterm/
 app/macos/.build/
 app/macos/.iconbuild/
 app/macos/icon-src.png
+app/path-aliases.json
 
 node_modules/

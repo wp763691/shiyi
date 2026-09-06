@@ -1,6 +1,8 @@
 import { readdir, stat, readFile, writeFile, mkdir, rename } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 const CLAUDE_ROOT = path.join(os.homedir(), '.claude', 'projects');
 const CODEX_SESSIONS = path.join(os.homedir(), '.codex', 'sessions');
@@ -8,6 +10,29 @@ const CODEX_ARCHIVE = path.join(os.homedir(), '.codex', 'archived_sessions');
 const CODEX_INDEX = path.join(os.homedir(), '.codex', 'session_index.jsonl');
 
 const cache = new Map(); // filePath -> { mtimeMs, size, data }
+
+// 目录重命名别名（app/path-aliases.json，不入库）：把旧项目路径映射到新路径
+function loadPathAliases() {
+  try {
+    const file = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'path-aliases.json');
+    if (!existsSync(file)) return [];
+    const obj = JSON.parse(readFileSync(file, 'utf8'));
+    return Array.isArray(obj.aliases) ? obj.aliases.filter((a) => a && a.old && a.new) : [];
+  } catch {
+    return [];
+  }
+}
+const PATH_ALIASES = loadPathAliases();
+
+function mapCwd(cwd) {
+  if (!cwd) return cwd;
+  for (const a of PATH_ALIASES) {
+    if (cwd === a.old || cwd.startsWith(a.old + '/')) {
+      return a.new + cwd.slice(a.old.length);
+    }
+  }
+  return cwd;
+}
 
 export async function scanAllSessions() {
   const errors = [];
@@ -225,6 +250,7 @@ function baseMeta(fp, s, tool) {
 
 function finalizeMeta(meta) {
   if (!meta.title) meta.title = meta.lastUserText ? meta.lastUserText.slice(0, 42) : '未命名会话';
+  meta.cwd = mapCwd(meta.cwd);
   meta.dirName = meta.cwd ? shortPath(meta.cwd) : path.basename(path.dirname(meta.path));
   meta.exchanges = meta.assistantTurns;
   if (!meta.lastTs) meta.lastTs = meta.fileMtime;

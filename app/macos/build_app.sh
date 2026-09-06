@@ -15,6 +15,11 @@ mkdir -p "$APP/Contents/Resources/server"
 cp -R "$ROOT/server.mjs" "$APP/Contents/Resources/server/"
 cp -R "$ROOT/lib" "$APP/Contents/Resources/server/"
 cp -R "$ROOT/public" "$APP/Contents/Resources/server/"
+if [ -f "$ROOT/path-aliases.json" ]; then
+  cp "$ROOT/path-aliases.json" "$APP/Contents/Resources/server/path-aliases.json"
+else
+  cp "$ROOT/path-aliases.example.json" "$APP/Contents/Resources/server/path-aliases.json"
+fi
 if [ -x "$ROOT/venv-iterm/bin/python" ]; then
   cp -R "$ROOT/venv-iterm" "$APP/Contents/Resources/server/"
 else
