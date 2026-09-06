@@ -38,6 +38,14 @@ const TERM_STAGE = document.getElementById('termStage');
 const TERM_EMPTY = document.getElementById('termEmpty');
 const STATUS_LEFT = document.getElementById('statusLeft');
 const STATUS_RIGHT = document.getElementById('statusRight');
+const TERM_NEW = document.getElementById('termNew');
+const NEW_BACKDROP = document.getElementById('newBackdrop');
+const NEW_NAME = document.getElementById('newName');
+const NEW_DIR = document.getElementById('newDir');
+const NEW_CANCEL = document.getElementById('newCancel');
+const NEW_CREATE = document.getElementById('newCreate');
+const NEW_TOOL_BTNS = [...document.querySelectorAll('.seg-btn[data-newtool]')];
+let newTool = 'bash';
 let configView = 'rules';
 const mcpStatus = new Map(); // key -> {state:'ok'|'fail'|'checking'|'skip', detail}
 let drawerOpen = false;
@@ -873,6 +881,49 @@ function setDrawer(open) {
   scheduleFit();
 }
 
+function openNewSession() {
+  const dirs = [...new Set((state.sessions || []).map((s) => s.cwd).filter(Boolean))];
+  if (!dirs.includes('/Users/wp/Desktop/llm/Shiyi')) dirs.unshift('/Users/wp/Desktop/llm/Shiyi');
+  NEW_DIR.innerHTML = '';
+  for (const d of dirs.slice(0, 60)) {
+    const opt = document.createElement('option');
+    opt.value = d;
+    opt.textContent = d;
+    NEW_DIR.appendChild(opt);
+  }
+  NEW_NAME.value = '';
+  NEW_BACKDROP.hidden = false;
+  NEW_NAME.focus();
+}
+
+async function createNewSession() {
+  const dir = NEW_DIR.value;
+  if (!dir) return toast('请选择工作目录', true);
+  let name = NEW_NAME.value.trim();
+  if (!name) name = `shiyi-${Date.now().toString(36)}`;
+  NEW_CREATE.disabled = true;
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'tmux-new', name, dir, tool: newTool }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`创建失败：${data.error || ''}`, true);
+      return;
+    }
+    NEW_BACKDROP.hidden = true;
+    toast(`已创建 ${name}，正在打开…`);
+    await refresh();
+    openEmbeddedTmux(name);
+  } catch (e) {
+    toast(`创建失败：${e.message}`, true);
+  } finally {
+    NEW_CREATE.disabled = false;
+  }
+}
+
 function showResumeModal(text, command) {
   MODAL_TITLE.textContent = '无法自动恢复';
   MODAL_TEXT.textContent = text;
@@ -967,6 +1018,16 @@ for (const btn of document.querySelectorAll('[data-search]')) {
 }
 RAIL_TOGGLE.addEventListener('click', () => setDrawer(!drawerOpen));
 DRAWER_CLOSE.addEventListener('click', () => setDrawer(false));
+TERM_NEW.addEventListener('click', openNewSession);
+NEW_CANCEL.addEventListener('click', () => { NEW_BACKDROP.hidden = true; });
+NEW_CREATE.addEventListener('click', createNewSession);
+NEW_NAME.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); createNewSession(); } });
+for (const btn of NEW_TOOL_BTNS) {
+  btn.addEventListener('click', () => {
+    newTool = btn.dataset.newtool;
+    for (const b of NEW_TOOL_BTNS) b.classList.toggle('active', b === btn);
+  });
+}
 if (window.ResizeObserver) {
   new ResizeObserver(scheduleFit).observe(TERM_STAGE);
 }

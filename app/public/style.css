@@ -385,6 +385,21 @@ body[data-tab='config'] .topbar { max-width: none; padding-top: 14px; padding-bo
   color: var(--muted); font-size: 11.5px; padding: 5px 12px;
   font-variant-numeric: tabular-nums;
 }
+.tab-new {
+  appearance: none; border: none; background: transparent; cursor: pointer;
+  margin-left: auto; align-self: center; color: var(--accent);
+  font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 7px;
+}
+.tab-new:hover { background: var(--accent-soft); }
+.field-label {
+  display: block; font-size: 11.5px; color: var(--muted); margin: 12px 0 5px;
+}
+.field-input {
+  width: 100%; box-sizing: border-box;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; font: inherit; font-size: 13px; color: var(--text); outline: none;
+}
+.field-input:focus { border-color: rgba(52, 85, 209, 0.45); box-shadow: 0 0 0 3px rgba(52, 85, 209, 0.08); }
 
 ::selection { background: rgba(52, 85, 209, 0.18); }
 

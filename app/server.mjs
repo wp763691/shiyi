@@ -262,6 +262,23 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      if (body.action === 'tmux-new') {
+        const name = String(body.name || '').trim();
+        const dir = String(body.dir || '').trim();
+        const tool = ['claude', 'codex', 'bash'].includes(body.tool) ? body.tool : 'bash';
+        if (!name || !/^[\w.-]+$/.test(name)) {
+          sendJson(res, 400, { ok: false, error: '会话名只能含字母、数字、下划线、点或短横' });
+          return;
+        }
+        try {
+          const cmd = tool === 'bash' ? 'bash' : tool;
+          await execFileP('/opt/homebrew/bin/tmux', ['new-session', '-d', '-s', name, '-c', dir, cmd], { timeout: 6000 });
+          sendJson(res, 200, { ok: true, name, dir, tool });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e).slice(0, 200) });
+        }
+        return;
+      }
       sendJson(res, 400, { ok: false, error: '未知动作' });
       return;
     }
