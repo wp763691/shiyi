@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { scanAllSessions, trashSession } from './lib/sessions.mjs';
 import { listTerminalWindows, runningClaudeProcs, focusWindow, resumeSession } from './lib/terminal.mjs';
+import { attachTmuxSession } from './lib/terminal.mjs';
 import { scanSkills, trashSkill } from './lib/skills.mjs';
 import {
   scanRules,
@@ -17,6 +18,7 @@ import {
   trashRuleFile,
   checkMcp,
 } from './lib/registry.mjs';
+import { listTmuxAgents } from './lib/tmux.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -68,7 +70,7 @@ async function buildState() {
   const projectDirs = [...new Set(sessions.map((s) => s.cwd).filter(Boolean))]
     .filter((p) => p && p !== home && !p.startsWith(home + path.sep + '.'))
     .slice(0, 300);
-  const [term, procsRes, skills, rules, mcp, agents, commands, hooks] = await Promise.all([
+  const [term, procsRes, skills, rules, mcp, agents, commands, hooks, tmuxAgents] = await Promise.all([
     listTerminalWindows(),
     runningClaudeProcs(),
     scanSkills(projectDirs),
@@ -77,9 +79,11 @@ async function buildState() {
     scanAgents(projectDirs),
     scanCommands(projectDirs),
     scanHooks(projectDirs),
+    listTmuxAgents(),
   ]);
   if (term.error) errors.push({ scope: 'windows', detail: term.error });
   if (procsRes.error) errors.push({ scope: 'processes', detail: procsRes.error });
+  if (tmuxAgents.error) errors.push({ scope: 'tmux', detail: tmuxAgents.error });
 
   // 工具 + cwd -> 最新会话
   const byCwd = new Map();
@@ -137,6 +141,7 @@ async function buildState() {
     agents,
     commands,
     hooks,
+    tmuxSessions: tmuxAgents.items || [],
     errors,
     now: Date.now(),
   };
@@ -223,6 +228,15 @@ const server = http.createServer(async (req, res) => {
           sendJson(res, 200, out);
         } catch (e) {
           sendJson(res, 500, { ok: false, state: 'error', detail: String(e?.message || e) });
+        }
+        return;
+      }
+      if (body.action === 'tmux-attach') {
+        try {
+          const out = await attachTmuxSession(body.name);
+          sendJson(res, out.ok ? 200 : 500, out);
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
         }
         return;
       }

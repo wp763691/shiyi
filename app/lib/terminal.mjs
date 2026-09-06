@@ -163,6 +163,29 @@ export async function resumeSession(sessionId, cwd, tool = 'claude') {
   }
 }
 
+// 在 iTerm（优先）/ Terminal.app 中接管一个 tmux 会话
+export async function attachTmuxSession(sessionName) {
+  const cmd = `tmux attach -t ${shq(sessionName)}`;
+  try {
+    const pyRes = await resumeViaItermPython(cmd);
+    if (pyRes.ok) return { ok: true };
+  } catch { /* 降级 */ }
+  const scriptPath = path.join(os.tmpdir(), `zyin-tmux-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.command`);
+  const body =
+    `#!/bin/bash\n` +
+    `${cmd}\n` +
+    `__zyin_code=$?\n` +
+    `if [ $__zyin_code -ne 0 ]; then printf '\\ntmux 接管失败（退出码 %s），按回车关闭\\n' "$__zyin_code"; read; fi\n`;
+  try {
+    await writeFile(scriptPath, body);
+    await chmod(scriptPath, 0o755);
+    await execFileP('/usr/bin/open', ['-a', 'Terminal', scriptPath], { timeout: 8000 });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e), command: cmd };
+  }
+}
+
 async function resumeViaItermPython(command) {
   // venv 与 lib 同级（session-board/venv-iterm）
   const py = path.join(moduleDir, '..', 'venv-iterm', 'bin', 'python');

@@ -66,7 +66,7 @@ function activateTab(name) {
 }
 
 let state = {
-  sessions: [], windows: [], skills: [],
+  sessions: [], windows: [], tmuxSessions: [], skills: [],
   rules: [], mcp: [], agents: [], commands: [], hooks: [],
   errors: [], now: Date.now(),
 };
@@ -125,16 +125,33 @@ function renderWarnings() {
 
 function liveFiltered() {
   const q = LIVE_SEARCH.value.trim().toLowerCase();
-  const all = (state.windows || []).filter((w) => w.running || w.session);
+  const all = liveAll();
   if (!q) return all;
   return all.filter((w) => {
-    const parts = [w.title, w.wname, w.tool, String(w.win || ''), w.session?.title, w.session?.cwd, w.session?.tool];
+    const parts = [w.title, w.name, w.wname, w.tool, String(w.win || ''), w.session?.title, w.session?.cwd, w.session?.tool];
     return parts.filter(Boolean).some((v) => String(v).toLowerCase().includes(q));
   });
 }
 
+function liveAll() {
+  const windows = (state.windows || []).filter((w) => w.running || w.session);
+  const tmux = (state.tmuxSessions || []).map((t) => ({
+    running: true,
+    tmux: true,
+    tool: t.tool,
+    title: t.name,
+    name: t.name,
+    sessionName: t.name,
+    session: { title: t.name, tool: t.tool, cwd: t.cwd },
+    cwd: t.cwd,
+    attached: t.attached,
+    pane: `${t.window}.${t.pane}`,
+  }));
+  return [...windows, ...tmux];
+}
+
 function renderLive() {
-  const all = (state.windows || []).filter((w) => w.running || w.session);
+  const all = liveAll();
   const windows = liveFiltered();
   LIVE_COUNT.textContent = `${windows.length} / ${all.length}`;
   LIVE.innerHTML = '';
@@ -154,20 +171,27 @@ function renderLive() {
     const line1 = el('div', 'row-title');
     line1.textContent = liveTitle(w);
     if (w.running) line1.append(el('span', 'tag live-tag', '运行中'));
+    if (w.tmux) line1.append(el('span', 'tag tmux-tag', 'tmux'));
     const chip = toolChip(w);
     if (chip) line1.append(el('span', chip[0], chip[1]));
     main.appendChild(line1);
 
     const meta = el('div', 'row-meta');
-    if (w.win) meta.append(el('span', 'chip', `窗口 ${w.win} · 标签 ${w.tab}`));
+    if (w.tmux) meta.append(el('span', 'chip', `tmux ${w.name}${w.attached ? '（已连接）' : '（后台）'}`));
+    else if (w.win) meta.append(el('span', 'chip', `窗口 ${w.win} · 标签 ${w.tab}`));
     else meta.append(el('span', 'chip', w.procPid ? `进程 ${w.procPid}` : '后台会话'));
+    if (w.tmux) meta.append(el('span', 'chip', `窗格 ${w.pane}`));
     if (w.session?.cwd) meta.append(el('span', 'chip path', w.session.cwd));
     if (w.session?.lastTs) meta.append(el('span', 'chip', fmtRel(w.session.lastTs) + '活跃'));
     main.appendChild(meta);
     row.appendChild(main);
 
     const actions = el('div', 'row-actions');
-    if (w.win) {
+    if (w.tmux) {
+      const attachBtn = el('button', 'btn primary', '接管会话');
+      attachBtn.onclick = () => act({ action: 'tmux-attach', name: w.sessionName });
+      actions.appendChild(attachBtn);
+    } else if (w.win) {
       const focusBtn = el('button', 'btn', '聚焦窗口');
       focusBtn.onclick = () => act({ action: 'focus', win: w.win, tab: w.tab });
       actions.appendChild(focusBtn);

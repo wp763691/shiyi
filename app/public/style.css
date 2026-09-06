@@ -144,6 +144,7 @@ select {
 .tag.tool-agents { color: #46606b; background: #e9f0f3; }
 .tag.scope-project { color: #4a5da0; background: #edf0fa; }
 .tag.scope-global { color: #8a651f; background: #faf0d9; }
+.tag.tmux-tag { color: #3c5a34; background: #eaf3e4; }
 .chip.mcp-ok { color: #0c6f4b; background: rgba(18, 135, 93, 0.09); }
 .chip.mcp-fail { color: #a8342e; background: rgba(194, 65, 58, 0.09); }
 .chip.mcp-checking { color: #46606b; background: #e9f0f3; }
