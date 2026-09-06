@@ -19,6 +19,7 @@ import {
   checkMcp,
 } from './lib/registry.mjs';
 import { listTmuxAgents } from './lib/tmux.mjs';
+import { openTmuxTerminal, writeTerminalInput, closeTerminal, attachStream } from './lib/termproxy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -241,6 +242,28 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       sendJson(res, 400, { ok: false, error: '未知动作' });
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/terminal-open') {
+      const body = await readBody(req);
+      const out = openTmuxTerminal(body.name);
+      sendJson(res, out.ok ? 200 : 400, out);
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/terminal-input') {
+      const body = await readBody(req);
+      const out = writeTerminalInput(body.id, body.data || '');
+      sendJson(res, out.ok ? 200 : 500, out);
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/terminal-close') {
+      const body = await readBody(req);
+      sendJson(res, 200, closeTerminal(body.id));
+      return;
+    }
+    if (req.method === 'GET' && url.pathname.startsWith('/api/terminal-stream/')) {
+      const id = decodeURIComponent(url.pathname.slice('/api/terminal-stream/'.length));
+      attachStream(id, res);
       return;
     }
     if (req.method === 'GET' && url.pathname.startsWith('/api/')) {

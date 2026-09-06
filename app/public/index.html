@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>拾忆 · 会话与技能</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/vendor/xterm/xterm.css">
 </head>
 <body>
   <header class="topbar">
@@ -124,6 +125,17 @@
       </div>
     </div>
   </div>
+  <div id="termBackdrop" class="backdrop" hidden>
+    <div class="term-modal">
+      <div class="term-head">
+        <strong id="termTitle">tmux 终端</strong>
+        <span class="head-note">内置终端（实验） · 随时可用 iTerm 接管</span>
+        <button id="termClose" class="btn">关闭</button>
+      </div>
+      <div id="termHost" class="term-host"></div>
+    </div>
+  </div>
+  <script src="/vendor/xterm/xterm.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

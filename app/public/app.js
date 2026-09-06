@@ -30,8 +30,17 @@ const MODAL_COMMAND = document.getElementById('modalCommand');
 const MODAL_COPY = document.getElementById('modalCopy');
 const MODAL_OK = document.getElementById('modalOk');
 const MODAL_CLOSE = document.getElementById('modalClose');
+const TERM_BACKDROP = document.getElementById('termBackdrop');
+const TERM_TITLE = document.getElementById('termTitle');
+const TERM_HOST = document.getElementById('termHost');
+const TERM_CLOSE = document.getElementById('termClose');
 let configView = 'rules';
 const mcpStatus = new Map(); // key -> {state:'ok'|'fail'|'checking'|'skip', detail}
+let term = null;
+let termId = null;
+let termBuf = '';
+let termTimer = null;
+let termBusy = false;
 
 function mcpKey(x) {
   return `${x.tool}|${x.scope}|${x.name}|${x.sourceFile || x.path || ''}`;
@@ -188,9 +197,11 @@ function renderLive() {
 
     const actions = el('div', 'row-actions');
     if (w.tmux) {
+      const embedBtn = el('button', 'btn', '内置终端');
+      embedBtn.onclick = () => openEmbeddedTmux(w.sessionName);
       const attachBtn = el('button', 'btn primary', '接管会话');
       attachBtn.onclick = () => act({ action: 'tmux-attach', name: w.sessionName });
-      actions.appendChild(attachBtn);
+      actions.append(embedBtn, attachBtn);
     } else if (w.win) {
       const focusBtn = el('button', 'btn', '聚焦窗口');
       focusBtn.onclick = () => act({ action: 'focus', win: w.win, tab: w.tab });
@@ -579,6 +590,130 @@ async function doMcpCheck(x) {
   if (st.detail) toast(`${x.name}: ${st.detail}`, st.state === 'ok' ? false : st.state === 'fail');
 }
 
+// ---------- 内置终端（xterm.js + tmux） ----------
+function bytesToB64(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+
+function flushTermInput() {
+  if (!termBuf || !termId) return;
+  const data = termBuf;
+  termBuf = '';
+  fetch('/api/terminal-input', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: termId, data: bytesToB64(new TextEncoder().encode(data)) }),
+  }).catch(() => {});
+}
+
+function queueTermInput(data) {
+  if (!termId) return;
+  termBuf += data;
+  if (!termTimer) termTimer = setInterval(flushTermInput, 25);
+}
+
+function termCleanup(message) {
+  if (termTimer) { clearInterval(termTimer); termTimer = null; }
+  if (term) term.write(`\r\n\x1b[0m${message || '[会话已结束]'}`);
+  termId = null;
+}
+
+async function openEmbeddedTmux(name) {
+  if (termBusy) return;
+  termBusy = true;
+  TERM_TITLE.textContent = `tmux · ${name}`;
+  TERM_HOST.innerHTML = '';
+  TERM_BACKDROP.hidden = false;
+
+  const T = new Terminal({
+    cols: 100,
+    rows: 34,
+    fontFamily: '"SF Mono", Menlo, Monaco, monospace',
+    fontSize: 13,
+    cursorBlink: true,
+    theme: { background: '#10131c', foreground: '#e2e6ef', cursor: '#7fa8ff', selectionBackground: '#33415f' },
+  });
+  term = T;
+  T.open(TERM_HOST);
+  T.focus();
+  T.onData((d) => queueTermInput(d));
+
+  try {
+    const res = await fetch('/api/terminal-open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (!data.ok || !data.id) {
+      term.write(`\r\n[打开失败] ${data.error || '未知错误'}`);
+      termBusy = false;
+      return;
+    }
+    termId = data.id;
+    term.write('\x1b[2J\x1b[H\x1b[?25h');
+    connectTermStream(data.id);
+  } catch (e) {
+    term.write(`\r\n[连接失败] ${e.message}`);
+  }
+  termBusy = false;
+}
+
+async function connectTermStream(id) {
+  try {
+    const res = await fetch(`/api/terminal-stream/${encodeURIComponent(id)}`);
+    if (!res.ok || !res.body) return termCleanup();
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        let payload = '';
+        for (const line of block.split('\n')) {
+          if (line.startsWith('data: ')) payload += line.slice(6);
+          if (line.startsWith('event: close')) { termCleanup(); return; }
+        }
+        if (payload && term) {
+          try {
+            const raw = atob(payload);
+            const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
+            term.write(bytes);
+          } catch { /* 忽略坏帧 */ }
+        }
+      }
+    }
+    termCleanup();
+  } catch {
+    termCleanup('[连接中断]');
+  }
+}
+
+function closeEmbeddedTerm() {
+  if (termId) {
+    fetch('/api/terminal-close', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: termId }),
+    }).catch(() => {});
+  }
+  if (termTimer) { clearInterval(termTimer); termTimer = null; }
+  termId = null;
+  termBuf = '';
+  try { term?.dispose(); } catch { /* 忽略 */ }
+  term = null;
+  TERM_BACKDROP.hidden = true;
+}
+
 function showResumeModal(text, command) {
   MODAL_TITLE.textContent = '无法自动恢复';
   MODAL_TEXT.textContent = text;
@@ -650,6 +785,10 @@ async function refresh() {
 TAB_SESSIONS.addEventListener('click', () => activateTab('sessions'));
 TAB_SKILLS.addEventListener('click', () => activateTab('skills'));
 TAB_CONFIG.addEventListener('click', () => activateTab('config'));
+TERM_CLOSE.addEventListener('click', closeEmbeddedTerm);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !TERM_BACKDROP.hidden) closeEmbeddedTerm();
+});
 document.querySelector('.tabbar').addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
   const tabs = [TAB_SESSIONS, TAB_SKILLS, TAB_CONFIG];

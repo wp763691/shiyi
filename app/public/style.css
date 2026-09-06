@@ -211,6 +211,24 @@ select {
 }
 .modal-actions { display: flex; gap: 9px; justify-content: flex-end; }
 
+/* 内置终端 */
+.term-modal {
+  width: min(1180px, 96vw); max-width: none;
+  background: #10131c; border: 1px solid #252b3a; border-radius: 14px;
+  box-shadow: var(--shadow-lg); overflow: hidden;
+}
+.term-head {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  background: #171b26; color: #d7dbe6; border-bottom: 1px solid #252b3a;
+}
+.term-head strong { font-size: 13px; font-weight: 600; }
+.term-head .btn { margin-left: auto; color: #9aa3b5; border-color: #303848; background: transparent; }
+.term-host {
+  padding: 10px 8px 14px; min-height: 380px; max-height: 72vh;
+  overflow: hidden;
+}
+.term-host .xterm { height: 100%; }
+
 ::selection { background: rgba(52, 85, 209, 0.18); }
 
 @media (max-width: 760px) {
