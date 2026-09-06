@@ -1,0 +1,16 @@
+{
+  "name": "shiyi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "拾忆 · 本地的 Claude Code / Codex 会话与技能管理台",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "setup": "bash ../scripts/setup.sh",
+    "build:app": "bash macos/build_app.sh"
+  },
+  "license": "MIT"
+}

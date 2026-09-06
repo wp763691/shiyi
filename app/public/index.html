@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>拾忆 · 会话与技能</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-mark" src="/brand.png" alt="拾忆" width="42" height="42">
+      <div class="brand-text">
+        <h1>拾忆</h1>
+        <p>把散落在 Claude Code / Codex 里的会话与技能，一处拾回</p>
+      </div>
+    </div>
+    <div class="top-meta">
+      <span class="conn"><i class="dot"></i><span id="connText">连接中…</span></span>
+      <span id="refreshText" class="muted"></span>
+    </div>
+  </header>
+
+  <nav class="tabbar" role="tablist" aria-label="主导航">
+    <button class="tab active" id="tab-sessions" data-tab="sessions" role="tab" aria-selected="true">
+      会话
+      <em class="tab-count" id="tabSessCount">–</em>
+    </button>
+    <button class="tab" id="tab-skills" data-tab="skills" role="tab" aria-selected="false" tabindex="-1">
+      技能
+      <em class="tab-count" id="tabSkillCount">–</em>
+    </button>
+    <button class="tab" id="tab-config" data-tab="config" role="tab" aria-selected="false" tabindex="-1">
+      配置
+      <em class="tab-count" id="tabConfigCount">–</em>
+    </button>
+  </nav>
+
+  <main>
+    <div id="warnings"></div>
+
+    <!-- ============ 会话 ============ -->
+    <section id="panel-sessions" class="tabpanel active" role="tabpanel" aria-labelledby="tab-sessions">
+      <div class="stack">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>正在运行</h2>
+            <span class="count" id="liveCount">0</span>
+            <span class="head-note">iTerm 窗口 ↔ 会话</span>
+            <div class="toolbar">
+              <input id="liveSearch" type="search" placeholder="筛选运行中会话…" autocomplete="off">
+            </div>
+          </div>
+          <div class="rows" id="liveRows"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>历史会话</h2>
+            <span class="count" id="historyCount">0</span>
+            <span class="head-note">运行中的会话不在此列</span>
+            <div class="toolbar">
+              <select id="dirFilter" aria-label="按目录筛选"></select>
+              <input id="search" type="search" placeholder="搜索标题、内容、目录…" autocomplete="off">
+            </div>
+          </div>
+          <div class="rows" id="historyRows"></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ============ 技能 ============ -->
+    <section id="panel-skills" class="tabpanel" role="tabpanel" aria-labelledby="tab-skills" hidden>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>技能库</h2>
+          <span class="count" id="skillsCount">0</span>
+          <span class="head-note">Claude Code · Codex · 本地技能</span>
+          <div class="toolbar">
+            <div class="seg" role="group" aria-label="技能范围">
+              <button class="seg-btn active" data-scope="all">全部</button>
+              <button class="seg-btn" data-scope="global">全局</button>
+              <button class="seg-btn" data-scope="project">项目</button>
+            </div>
+            <input id="skillsSearch" type="search" placeholder="搜索技能名称 / 描述…" autocomplete="off">
+          </div>
+        </div>
+        <div class="rows" id="skillRows"></div>
+      </section>
+    </section>
+
+    <!-- ============ 配置 ============ -->
+    <section id="panel-config" class="tabpanel" role="tabpanel" aria-labelledby="tab-config" hidden>
+      <section class="panel">
+        <div class="panel-head">
+          <h2 id="configTitle">规则库</h2>
+          <span class="count" id="configCount">0</span>
+          <div class="toolbar">
+            <div class="seg" role="group" aria-label="配置分类">
+              <button class="seg-btn active" data-cview="rules">规则</button>
+              <button class="seg-btn" data-cview="mcp">MCP</button>
+              <button class="seg-btn" data-cview="agents">Agent</button>
+              <button class="seg-btn" data-cview="commands">命令</button>
+              <button class="seg-btn" data-cview="hooks">Hooks</button>
+            </div>
+            <input id="configSearch" type="search" placeholder="搜索…" autocomplete="off">
+          </div>
+        </div>
+        <div class="rows" id="configRows"></div>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <div id="modalBackdrop" class="backdrop" hidden>
+    <div class="modal">
+      <h3 id="modalTitle">无法自动恢复</h3>
+      <p id="modalText" class="modal-text"></p>
+      <code id="modalCommand" class="modal-code" hidden></code>
+      <div class="modal-actions">
+        <button id="modalCopy" class="btn primary">复制命令</button>
+        <button id="modalOk" class="btn danger" hidden>确认删除</button>
+        <button id="modalClose" class="btn">知道了</button>
+      </div>
+    </div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

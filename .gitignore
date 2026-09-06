@@ -1,0 +1,12 @@
+.DS_Store
+*.log
+__pycache__/
+*.pyc
+
+# 运行时依赖与构建产物（不提交）
+app/venv-iterm/
+app/macos/.build/
+app/macos/.iconbuild/
+app/macos/icon-src.png
+
+node_modules/
