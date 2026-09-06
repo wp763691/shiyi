@@ -298,6 +298,9 @@ body[data-tab='config'] .topbar { max-width: none; padding-top: 14px; padding-bo
   background: var(--panel);
 }
 .drawer-head strong { font-size: 13px; letter-spacing: 0.03em; }
+.drawer-actions { display: inline-flex; gap: 6px; }
+.btn.primary-ghost { color: var(--accent); border-color: rgba(52, 85, 209, 0.35); background: var(--accent-soft); }
+.btn.primary-ghost:hover { background: rgba(52, 85, 209, 0.14); }
 .mini-panel { display: flex; flex-direction: column; min-height: 0; flex: 1 1 0; }
 .mini-panel.collapsed { flex: 0 0 auto; }
 .mini-panel.collapsed .rows.compact { display: none; }
@@ -377,6 +380,7 @@ body[data-tab='config'] .topbar { max-width: none; padding-top: 14px; padding-bo
 .term-empty { margin: auto; text-align: center; color: var(--faint); }
 .term-empty-title { font-size: 16px; font-weight: 650; color: #8b94a6; margin-bottom: 10px; }
 .term-empty p { margin: 5px 0; font-size: 12.5px; }
+.empty-new { margin-top: 16px; }
 .term-slot { flex: 1; min-width: 0; min-height: 0; display: none; }
 .term-slot .xterm { height: 100%; padding: 2px; }
 .term-status {
@@ -400,6 +404,8 @@ body[data-tab='config'] .topbar { max-width: none; padding-top: 14px; padding-bo
   padding: 8px 10px; font: inherit; font-size: 13px; color: var(--text); outline: none;
 }
 .field-input:focus { border-color: rgba(52, 85, 209, 0.45); box-shadow: 0 0 0 3px rgba(52, 85, 209, 0.08); }
+.dir-row { display: flex; gap: 8px; }
+.dir-row select { flex: 1; min-width: 0; }
 
 ::selection { background: rgba(52, 85, 209, 0.18); }
 

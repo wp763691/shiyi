@@ -45,6 +45,9 @@ const NEW_DIR = document.getElementById('newDir');
 const NEW_CANCEL = document.getElementById('newCancel');
 const NEW_CREATE = document.getElementById('newCreate');
 const NEW_TOOL_BTNS = [...document.querySelectorAll('.seg-btn[data-newtool]')];
+const NEW_PERM_WRAP = document.getElementById('permWrap');
+const NEW_PERM = document.getElementById('newPerm');
+const DIR_BROWSE = document.getElementById('dirBrowse');
 let newTool = 'bash';
 let configView = 'rules';
 const mcpStatus = new Map(); // key -> {state:'ok'|'fail'|'checking'|'skip', detail}
@@ -892,8 +895,32 @@ function openNewSession() {
     NEW_DIR.appendChild(opt);
   }
   NEW_NAME.value = '';
+  updatePermSelect();
   NEW_BACKDROP.hidden = false;
   NEW_NAME.focus();
+}
+
+function updatePermSelect() {
+  const perms = {
+    bash: [],
+    claude: [
+      ['', '默认权限'],
+      ['--permission-mode bypassPermissions', 'bypassPermissions（全自动，谨慎）'],
+    ],
+    codex: [
+      ['', '默认权限'],
+      ['--yolo', '--yolo（自动批准，谨慎）'],
+    ],
+  };
+  const list = perms[newTool] || [];
+  NEW_PERM.innerHTML = '';
+  for (const [value, label] of list) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    NEW_PERM.appendChild(opt);
+  }
+  NEW_PERM_WRAP.hidden = list.length === 0;
 }
 
 async function createNewSession() {
@@ -906,7 +933,7 @@ async function createNewSession() {
     const res = await fetch('/api/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'tmux-new', name, dir, tool: newTool }),
+      body: JSON.stringify({ action: 'tmux-new', name, dir, tool: newTool, perm: NEW_PERM.value }),
     });
     const data = await res.json();
     if (!data.ok) {
@@ -921,6 +948,32 @@ async function createNewSession() {
     toast(`创建失败：${e.message}`, true);
   } finally {
     NEW_CREATE.disabled = false;
+  }
+}
+
+async function browseDir() {
+  DIR_BROWSE.disabled = true;
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'pick-dir' }),
+    });
+    const data = await res.json();
+    if (data.ok && !data.canceled && data.dir) {
+      const existing = [...NEW_DIR.options].some((o) => o.value === data.dir);
+      if (!existing) {
+        const opt = document.createElement('option');
+        opt.value = data.dir;
+        opt.textContent = data.dir;
+        NEW_DIR.appendChild(opt);
+      }
+      NEW_DIR.value = data.dir;
+    }
+  } catch (e) {
+    toast(`选择目录失败：${e.message}`, true);
+  } finally {
+    DIR_BROWSE.disabled = false;
   }
 }
 
@@ -1019,6 +1072,9 @@ for (const btn of document.querySelectorAll('[data-search]')) {
 RAIL_TOGGLE.addEventListener('click', () => setDrawer(!drawerOpen));
 DRAWER_CLOSE.addEventListener('click', () => setDrawer(false));
 TERM_NEW.addEventListener('click', openNewSession);
+document.getElementById('drawerNew').addEventListener('click', openNewSession);
+document.getElementById('emptyNew').addEventListener('click', openNewSession);
+DIR_BROWSE.addEventListener('click', browseDir);
 NEW_CANCEL.addEventListener('click', () => { NEW_BACKDROP.hidden = true; });
 NEW_CREATE.addEventListener('click', createNewSession);
 NEW_NAME.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); createNewSession(); } });
@@ -1026,6 +1082,7 @@ for (const btn of NEW_TOOL_BTNS) {
   btn.addEventListener('click', () => {
     newTool = btn.dataset.newtool;
     for (const b of NEW_TOOL_BTNS) b.classList.toggle('active', b === btn);
+    updatePermSelect();
   });
 }
 if (window.ResizeObserver) {

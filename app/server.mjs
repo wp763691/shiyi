@@ -121,8 +121,10 @@ async function buildState() {
 
   // iTerm 不可控时的兜底：无法关联到窗口的 claude 进程也展示出来
   const matchedTtys = new Set(windows.map((w) => normalizeTty(w.tty)).filter(Boolean));
+  const tmuxTtys = new Set((tmuxAgents.items || []).map((t) => normalizeTty(t.tty)).filter(Boolean));
   for (const p of procsRes.procs || []) {
-    if (matchedTtys.has(normalizeTty(p.tty))) continue;
+    const tty = normalizeTty(p.tty);
+    if (!tty || matchedTtys.has(tty) || tmuxTtys.has(tty)) continue;
     const tool = p.tool || null;
     const active = tool && p.cwd && byCwd.get(`${tool}::${p.cwd}`);
     windows.push({
@@ -138,6 +140,7 @@ async function buildState() {
         ? { sessionId: active.sessionId, tool: active.tool, title: active.title, lastTs: active.lastTs, cwd: active.cwd }
         : null,
     });
+    matchedTtys.add(tty);
   }
 
   return {
@@ -266,16 +269,40 @@ const server = http.createServer(async (req, res) => {
         const name = String(body.name || '').trim();
         const dir = String(body.dir || '').trim();
         const tool = ['claude', 'codex', 'bash'].includes(body.tool) ? body.tool : 'bash';
+        const perm = String(body.perm || '').trim();
+        if (!/^[A-Za-z0-9 _-]*$/.test(perm) || perm.length > 80) {
+          sendJson(res, 400, { ok: false, error: '权限参数不合法' });
+          return;
+        }
         if (!name || !/^[\w.-]+$/.test(name)) {
           sendJson(res, 400, { ok: false, error: '会话名只能含字母、数字、下划线、点或短横' });
           return;
         }
         try {
-          const cmd = tool === 'bash' ? 'bash' : tool;
+          const cmd = tool === 'bash' ? 'bash' : perm ? `${tool} ${perm}` : tool;
           await execFileP('/opt/homebrew/bin/tmux', ['new-session', '-d', '-s', name, '-c', dir, cmd], { timeout: 6000 });
           sendJson(res, 200, { ok: true, name, dir, tool });
         } catch (e) {
           sendJson(res, 500, { ok: false, error: String(e?.message || e).slice(0, 200) });
+        }
+        return;
+      }
+      if (body.action === 'pick-dir') {
+        try {
+          const { stdout } = await execFileP('/usr/bin/osascript', [
+            '-e',
+            'POSIX path of (choose folder with prompt "选择会话工作目录")',
+          ], { timeout: 30000 });
+          const dir = stdout.trim();
+          if (!dir) { sendJson(res, 200, { ok: true, canceled: true }); return; }
+          sendJson(res, 200, { ok: true, dir });
+        } catch (e) {
+          const msg = String(e?.message || e);
+          if (/-128|user canceled|User canceled/i.test(msg)) {
+            sendJson(res, 200, { ok: true, canceled: true });
+          } else {
+            sendJson(res, 500, { ok: false, error: msg.slice(0, 200) });
+          }
         }
         return;
       }

@@ -50,7 +50,10 @@
         <aside class="wb-drawer" id="wbDrawer" aria-hidden="true">
           <div class="drawer-head">
             <strong>会话</strong>
-            <button class="btn small" id="drawerClose">收起 ⌘L</button>
+            <span class="drawer-actions">
+              <button class="btn small primary-ghost" id="drawerNew">＋ 新建</button>
+              <button class="btn small" id="drawerClose">收起 ⌘L</button>
+            </span>
           </div>
           <section class="mini-panel">
             <div class="mini-head" title="点击折叠/展开">
@@ -93,6 +96,7 @@
               <div class="term-empty-title">拾忆工作台</div>
               <p>⌘L 呼出会话列表 · 点「内置终端」在此打开 tmux 会话</p>
               <p>外部 iTerm 的「聚焦窗口 / 恢复会话」功能不受影响</p>
+              <button class="btn primary empty-new" id="emptyNew">＋ 新建会话</button>
             </div>
           </div>
           <footer class="term-status" id="termStatus">
@@ -164,12 +168,19 @@
       <label class="field-label">会话名称（可留空自动生成）</label>
       <input id="newName" class="field-input" placeholder="例如 jeri-review" autocomplete="off">
       <label class="field-label">工作目录</label>
-      <select id="newDir" class="field-input"></select>
+      <div class="dir-row">
+        <select id="newDir" class="field-input"></select>
+        <button type="button" id="dirBrowse" class="btn">浏览…</button>
+      </div>
       <label class="field-label">启动工具</label>
       <div class="seg" role="group" aria-label="启动工具">
         <button class="seg-btn active" data-newtool="bash">Bash</button>
         <button class="seg-btn" data-newtool="claude">Claude Code</button>
         <button class="seg-btn" data-newtool="codex">Codex</button>
+      </div>
+      <div id="permWrap" hidden>
+        <label class="field-label">权限模式</label>
+        <select id="newPerm" class="field-input"></select>
       </div>
       <div class="modal-actions">
         <button id="newCancel" class="btn">取消</button>
