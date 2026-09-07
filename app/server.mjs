@@ -19,6 +19,7 @@ import {
   checkMcp,
 } from './lib/registry.mjs';
 import { listTmuxAgents } from './lib/tmux.mjs';
+import { scanConfigFiles, readConfigFile, saveConfigFile } from './lib/configfiles.mjs';
 import {
   openTmuxTerminal,
   writeTerminalInput,
@@ -31,6 +32,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const PORT = Number(process.env.PORT || 8787);
 const HOST = '127.0.0.1';
+const debugLogs = [];
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -77,7 +79,7 @@ async function buildState() {
   const projectDirs = [...new Set(sessions.map((s) => s.cwd).filter(Boolean))]
     .filter((p) => p && p !== home && !p.startsWith(home + path.sep + '.'))
     .slice(0, 300);
-  const [term, procsRes, skills, rules, mcp, agents, commands, hooks, tmuxAgents] = await Promise.all([
+  const [term, procsRes, skills, rules, mcp, agents, commands, hooks, tmuxAgents, configFiles] = await Promise.all([
     listTerminalWindows(),
     runningClaudeProcs(),
     scanSkills(projectDirs),
@@ -87,6 +89,7 @@ async function buildState() {
     scanCommands(projectDirs),
     scanHooks(projectDirs),
     listTmuxAgents(),
+    scanConfigFiles(),
   ]);
   if (term.error) errors.push({ scope: 'windows', detail: term.error });
   if (procsRes.error) errors.push({ scope: 'processes', detail: procsRes.error });
@@ -153,6 +156,7 @@ async function buildState() {
     commands,
     hooks,
     tmuxSessions: tmuxAgents.items || [],
+    configFiles,
     errors,
     now: Date.now(),
   };
@@ -306,6 +310,12 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      if (body.action === 'dbg') {
+        debugLogs.push(`${new Date().toISOString().slice(11, 19)} ${String(body.msg || '').slice(0, 500)}`);
+        if (debugLogs.length > 200) debugLogs.shift();
+        sendJson(res, 200, { ok: true });
+        return;
+      }
       sendJson(res, 400, { ok: false, error: '未知动作' });
       return;
     }
@@ -336,6 +346,30 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname.startsWith('/api/terminal-stream/')) {
       const id = decodeURIComponent(url.pathname.slice('/api/terminal-stream/'.length));
       attachStream(id, res);
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/api/debug') {
+      sendJson(res, 200, { ok: true, logs: debugLogs });
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/api/config-file') {
+      const tool = url.searchParams.get('tool');
+      try {
+        const out = await readConfigFile(tool);
+        sendJson(res, 200, out);
+      } catch (e) {
+        sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+      }
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/config-save') {
+      const body = await readBody(req);
+      try {
+        const out = await saveConfigFile(body.tool, body.content);
+        sendJson(res, 200, out);
+      } catch (e) {
+        sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+      }
       return;
     }
     if (req.method === 'GET' && url.pathname.startsWith('/api/')) {

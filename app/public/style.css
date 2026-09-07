@@ -142,6 +142,7 @@ select {
 .tag.tool-codex { color: #8a651f; background: #faf0d9; }
 .tag.tool-claude { color: #7c543a; background: #f6ece4; }
 .tag.tool-agents { color: #46606b; background: #e9f0f3; }
+.tag.tool-bash { color: #4c5870; background: #eef0f3; }
 .tag.scope-project { color: #4a5da0; background: #edf0fa; }
 .tag.scope-global { color: #8a651f; background: #faf0d9; }
 .tag.tmux-tag { color: #3c5a34; background: #eaf3e4; }
@@ -239,24 +240,44 @@ select {
   box-shadow: var(--shadow);
 }
 body[data-tab='sessions'] #warnings { display: none; }
-body[data-tab='sessions'] main {
-  max-width: none;
-  padding: 10px 18px 18px;
-  height: calc(100vh - 148px);
+body[data-tab='sessions'] {
+  height: 100vh; overflow: hidden;
   display: flex; flex-direction: column;
 }
-body[data-tab='sessions'] main > *:not(#panel-sessions) { display: none; }
+body[data-tab='sessions'] .topbar,
+body[data-tab='sessions'] .tabbar { flex: 0 0 auto; }
+body[data-tab='sessions'] #pageMain {
+  max-width: none;
+  margin: 0;
+  padding: 8px 18px 14px;
+  height: auto;
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+}
+body[data-tab='sessions'] #pageMain > *:not(#panel-sessions) { display: none; }
 body[data-tab='sessions'] #panel-sessions { flex: 1; min-height: 0; display: flex; }
 body[data-tab='sessions'] #panel-sessions .workbench { width: 100%; }
 body[data-tab='sessions'] .topbar { max-width: none; padding-top: 14px; padding-bottom: 10px; }
-body[data-tab='sessions'] .brand-text p { display: none; }
-body[data-tab='skills'] main,
-body[data-tab='config'] main {
+body[data-tab='sessions'] .topbar { margin: 0; }
+body[data-tab='skills'] #pageMain,
+body[data-tab='config'] #pageMain {
   max-width: none;
-  height: calc(100vh - 148px);
-  padding: 10px 18px 18px;
+  margin: 0;
+  height: auto;
+  padding: 8px 18px 14px;
   display: flex; flex-direction: column;
 }
+body[data-tab='skills'],
+body[data-tab='config'] {
+  height: 100vh; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+body[data-tab='skills'] .topbar,
+body[data-tab='skills'] .tabbar,
+body[data-tab='config'] .topbar,
+body[data-tab='config'] .tabbar { flex: 0 0 auto; }
+body[data-tab='skills'] #pageMain,
+body[data-tab='config'] #pageMain { flex: 1; min-height: 0; }
 body[data-tab='skills'] #warnings,
 body[data-tab='config'] #warnings { display: none; }
 body[data-tab='skills'] #panel-skills,
@@ -272,7 +293,12 @@ body[data-tab='config'] #panel-config .rows {
   flex: 1; min-height: 0; overflow-y: auto;
 }
 body[data-tab='skills'] .topbar,
-body[data-tab='config'] .topbar { max-width: none; padding-top: 14px; padding-bottom: 10px; }
+body[data-tab='config'] .topbar {
+  max-width: none; margin: 0; padding-top: 14px; padding-bottom: 10px;
+}
+body[data-tab='sessions'] .brand-text p,
+body[data-tab='skills'] .brand-text p,
+body[data-tab='config'] .brand-text p { display: block; }
 .wb-rail {
   width: 42px; flex: 0 0 42px;
   background: #f2f4f8; border-right: 1px solid var(--line-soft);
@@ -354,6 +380,7 @@ body[data-tab='config'] .topbar { max-width: none; padding-top: 14px; padding-bo
 .wb-terminal {
   flex: 1; min-width: 0; display: flex; flex-direction: column;
   background: #ffffff;
+  max-width: none; margin: 0; padding: 0;
 }
 .term-tabs {
   display: flex; align-items: stretch; gap: 2px; padding: 6px 8px 0;
@@ -375,13 +402,17 @@ body[data-tab='config'] .topbar { max-width: none; padding-top: 14px; padding-bo
 .term-tab b:hover { color: var(--danger); }
 .term-stage {
   flex: 1; min-height: 0; display: flex; padding: 8px 10px 10px; overflow: hidden;
-  background: #ffffff;
+  background: #eceef3;
 }
 .term-empty { margin: auto; text-align: center; color: var(--faint); }
 .term-empty-title { font-size: 16px; font-weight: 650; color: #8b94a6; margin-bottom: 10px; }
 .term-empty p { margin: 5px 0; font-size: 12.5px; }
 .empty-new { margin-top: 16px; }
-.term-slot { flex: 1; min-width: 0; min-height: 0; display: none; }
+.term-slot {
+  flex: 1; min-width: 0; min-height: 0; display: none;
+  background: #f8f9fc; border: 1px solid #dfe3eb; border-radius: 8px;
+  overflow: hidden;
+}
 .term-slot .xterm { height: 100%; padding: 2px; }
 .term-status {
   display: flex; justify-content: space-between; gap: 12px;
@@ -389,6 +420,8 @@ body[data-tab='config'] .topbar { max-width: none; padding-top: 14px; padding-bo
   color: var(--muted); font-size: 11.5px; padding: 5px 12px;
   font-variant-numeric: tabular-nums;
 }
+.term-status .status-right { margin-left: auto; }
+.term-clear { padding: 2px 8px; font-size: 11px; }
 .tab-new {
   appearance: none; border: none; background: transparent; cursor: pointer;
   margin-left: auto; align-self: center; color: var(--accent);
@@ -406,6 +439,32 @@ body[data-tab='config'] .topbar { max-width: none; padding-top: 14px; padding-bo
 .field-input:focus { border-color: rgba(52, 85, 209, 0.45); box-shadow: 0 0 0 3px rgba(52, 85, 209, 0.08); }
 .dir-row { display: flex; gap: 8px; }
 .dir-row select { flex: 1; min-width: 0; }
+.cfg-modal { max-width: 860px; }
+.cfg-code { position: relative; }
+.code-pre {
+  position: absolute; inset: 0; margin: 0; overflow: hidden;
+  pointer-events: none; white-space: pre; word-wrap: normal;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+  padding: 12px 14px; color: #6a7284;
+}
+.cfg-textarea {
+  width: 100%; box-sizing: border-box;
+  min-height: 46vh; resize: vertical;
+  background: transparent; border: 1px solid var(--line); border-radius: 9px;
+  color: transparent; caret-color: var(--accent);
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+  padding: 12px 14px; outline: none;
+  position: relative; z-index: 1; overflow: auto;
+  -webkit-text-fill-color: transparent;
+}
+.cfg-textarea:focus { border-color: rgba(52, 85, 209, 0.45); box-shadow: 0 0 0 3px rgba(52, 85, 209, 0.08); }
+.cfg-textarea::selection { background: rgba(52, 85, 209, 0.20); -webkit-text-fill-color: transparent; }
+.tok-key { color: #3455d1; }
+.tok-str { color: #a05b18; }
+.tok-num { color: #2c7d66; }
+.tok-lit { color: #a02c8e; }
+.tok-com { color: #9aa0ad; font-style: italic; }
+.tok-sec { color: #6f42c1; font-weight: 600; }
 
 ::selection { background: rgba(52, 85, 209, 0.18); }
 

@@ -37,7 +37,7 @@
     </button>
   </nav>
 
-  <main>
+  <main id="pageMain">
     <div id="warnings"></div>
 
     <!-- ============ 会话（终端优先工作台） ============ -->
@@ -101,7 +101,8 @@
           </div>
           <footer class="term-status" id="termStatus">
             <span id="statusLeft">就绪</span>
-            <span id="statusRight">⌘L 列表 · ⌘1-9 切换标签</span>
+            <span class="status-right" id="statusRight">⌘L 列表 · ⌘1-9 切换标签</span>
+            <button class="btn small term-clear" id="termClear" hidden>清屏</button>
           </footer>
         </main>
       </div>
@@ -140,6 +141,7 @@
               <button class="seg-btn" data-cview="agents">Agent</button>
               <button class="seg-btn" data-cview="commands">命令</button>
               <button class="seg-btn" data-cview="hooks">Hooks</button>
+              <button class="seg-btn" data-cview="settings">设置</button>
             </div>
             <input id="configSearch" type="search" placeholder="搜索…" autocomplete="off">
           </div>
@@ -185,6 +187,20 @@
       <div class="modal-actions">
         <button id="newCancel" class="btn">取消</button>
         <button id="newCreate" class="btn primary">创建并打开</button>
+      </div>
+    </div>
+  </div>
+  <div id="cfgBackdrop" class="backdrop" hidden>
+    <div class="modal cfg-modal">
+      <h3 id="cfgTitle">编辑配置文件</h3>
+      <p id="cfgHint" class="modal-text">保存前会自动备份原文件。</p>
+      <div class="cfg-code">
+        <pre id="cfgPre" class="code-pre" aria-hidden="true"></pre>
+        <textarea id="cfgText" class="cfg-textarea" spellcheck="false" wrap="off"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="cfgCancel" class="btn">取消</button>
+        <button id="cfgSave" class="btn primary">保存</button>
       </div>
     </div>
   </div>

@@ -38,6 +38,7 @@ const TERM_STAGE = document.getElementById('termStage');
 const TERM_EMPTY = document.getElementById('termEmpty');
 const STATUS_LEFT = document.getElementById('statusLeft');
 const STATUS_RIGHT = document.getElementById('statusRight');
+const TERM_CLEAR = document.getElementById('termClear');
 const TERM_NEW = document.getElementById('termNew');
 const NEW_BACKDROP = document.getElementById('newBackdrop');
 const NEW_NAME = document.getElementById('newName');
@@ -48,6 +49,13 @@ const NEW_TOOL_BTNS = [...document.querySelectorAll('.seg-btn[data-newtool]')];
 const NEW_PERM_WRAP = document.getElementById('permWrap');
 const NEW_PERM = document.getElementById('newPerm');
 const DIR_BROWSE = document.getElementById('dirBrowse');
+const CFG_BACKDROP = document.getElementById('cfgBackdrop');
+const CFG_TITLE = document.getElementById('cfgTitle');
+const CFG_PRE = document.getElementById('cfgPre');
+const CFG_TEXT = document.getElementById('cfgText');
+const CFG_CANCEL = document.getElementById('cfgCancel');
+const CFG_SAVE = document.getElementById('cfgSave');
+let cfgCurrent = null;
 let newTool = 'bash';
 let configView = 'rules';
 const mcpStatus = new Map(); // key -> {state:'ok'|'fail'|'checking'|'skip', detail}
@@ -102,6 +110,7 @@ function activateTab(name) {
 let state = {
   sessions: [], windows: [], tmuxSessions: [], skills: [],
   rules: [], mcp: [], agents: [], commands: [], hooks: [],
+  configFiles: [],
   errors: [], now: Date.now(),
 };
 let lastError = null;
@@ -139,11 +148,13 @@ function fmtDate(ts) {
 function liveTitle(w) {
   if (w.session?.title && w.session.title !== '未命名会话') return w.session.title;
   if (w.title) return w.title;
+  if (w.tool === 'bash') return 'Bash 会话';
   return w.tool === 'codex' ? 'Codex 会话' : 'Claude Code 会话';
 }
 
 function toolChip(obj) {
   const tool = obj.session?.tool || obj.tool || '';
+  if (tool === 'bash') return ['tag tool-bash', 'Bash'];
   if (tool !== 'codex' && tool !== 'claude') return null;
   return tool === 'codex' ? ['tag tool-codex', 'Codex'] : ['tag tool-claude', 'Claude Code'];
 }
@@ -242,7 +253,7 @@ function renderLive() {
     actions.appendChild(terminateBtn);
     if (w.tmux) {
       const embedBtn = el('button', 'btn', '内置终端');
-      embedBtn.onclick = () => openEmbeddedTmux(w.sessionName);
+      embedBtn.onclick = () => handleEmbeddedOpen(w.sessionName);
       const attachBtn = el('button', 'btn primary', '接管会话');
       attachBtn.onclick = () => act({ action: 'tmux-attach', name: w.sessionName });
       actions.append(embedBtn, attachBtn);
@@ -422,14 +433,7 @@ function renderSkills() {
 
 function configFiltered() {
   const q = CONFIG_SEARCH.value.trim().toLowerCase();
-  const map = {
-    rules: 'rules',
-    mcp: 'mcp',
-    agents: 'agents',
-    commands: 'commands',
-    hooks: 'hooks',
-  };
-  const all = state[map[configView]] || [];
+  const all = configView === 'settings' ? state.configFiles || [] : state[configView] || [];
   if (!q) return all;
   return all.filter((x) =>
     [x.name, x.label, x.event, x.matcher, x.toolLabel, x.projectName, x.path, x.sourceFile, x.command, x.url, x.preview]
@@ -452,10 +456,9 @@ function toolTag(x) {
 }
 
 function renderConfig() {
-  const map = { rules: 'rules', mcp: 'mcp', agents: 'agents', commands: 'commands', hooks: 'hooks' };
-  const all = state[map[configView]] || [];
+  const all = configView === 'settings' ? state.configFiles || [] : state[configView] || [];
   const list = configFiltered();
-  const titles = { rules: '规则库', mcp: 'MCP 服务器', agents: 'Agents', commands: '斜杠命令', hooks: 'Hooks（只读）' };
+  const titles = { rules: '规则库', mcp: 'MCP 服务器', agents: 'Agents', commands: '斜杠命令', hooks: 'Hooks（只读）', settings: '工具配置文件' };
   CONFIG_TITLE.textContent = titles[configView] || '配置';
   CONFIG_COUNT.textContent = `${list.length} / ${all.length}`;
   CONFIG_ROWS.innerHTML = '';
@@ -468,6 +471,7 @@ function renderConfig() {
       agents: '暂无 Agent 角色',
       commands: '暂无斜杠命令',
       hooks: '暂无 Hooks',
+      settings: '暂无配置文件',
     };
     empty.textContent = all.length ? '没有匹配的项目' : empties[configView] || '暂无内容';
     CONFIG_ROWS.appendChild(empty);
@@ -520,7 +524,10 @@ function renderConfig() {
       actions.append(checkBtn);
     }
     const editBtn = el('button', 'btn small', '编辑');
-    editBtn.onclick = () => act({ action: 'open', reveal: false, path: file });
+    editBtn.onclick = () => {
+      if (configView === 'settings') openConfigEditor(x.tool, x.label);
+      else act({ action: 'open', reveal: false, path: file });
+    };
     const revealBtn = el('button', 'btn small', '文件夹');
     revealBtn.onclick = () => act({ action: 'open', reveal: true, path: file });
     actions.append(editBtn, revealBtn);
@@ -544,7 +551,7 @@ function renderConfig() {
         );
       };
       actions.append(delBtn);
-    } else {
+    } else if (configView !== 'settings') {
       const copyBtn = el('button', 'btn small', '复制名称');
       copyBtn.onclick = () => {
         navigator.clipboard?.writeText(x.name)
@@ -639,6 +646,16 @@ async function doMcpCheck(x) {
 }
 
 // ---------- 终端工作台（xterm.js + tmux，多标签） ----------
+function dbg(msg) {
+  fetch('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'dbg', msg }),
+  }).catch(() => {});
+}
+window.addEventListener('error', (e) => dbg(`全局错误 ${e.message} @ ${e.filename}:${e.lineno}`));
+window.addEventListener('unhandledrejection', (e) => dbg(`未处理Promise ${e.reason?.message || e.reason}`));
+
 function bytesToB64(bytes) {
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -672,9 +689,21 @@ function updateTermStatus() {
   const rec = activeRec();
   if (rec) {
     STATUS_LEFT.textContent = `tmux · ${rec.name} · ${rec.alive ? '已连接' : '已断开（后台仍运行）'}`;
+    TERM_CLEAR.hidden = false;
   } else {
     STATUS_LEFT.textContent = '就绪';
+    TERM_CLEAR.hidden = true;
   }
+}
+
+function clearActiveTerm() {
+  const rec = activeRec();
+  if (!rec) return;
+  try { rec.term.clear(); } catch { /* 忽略 */ }
+  try { rec.term.scrollToBottom(); } catch { /* 忽略 */ }
+  rec.buf = (rec.buf || '') + '\u000c';
+  flushRecInput(rec);
+  rec.term.focus();
 }
 
 function renderTermTabs() {
@@ -698,6 +727,21 @@ function renderTermTabs() {
     btn.onclick = () => activateTerminal(rec.name);
     TERM_TABS.insertBefore(btn, hint);
   }
+  const info = [];
+  const btn = TERM_TABS.querySelector('.term-tab');
+  if (btn) {
+    const r = btn.getBoundingClientRect();
+    const cs = getComputedStyle(btn);
+    info.push(`tabRect=${Math.round(r.width)}x${Math.round(r.height)} display=${cs.display}`);
+  } else {
+    info.push('tabRect=无');
+  }
+  const tabsRect = TERM_TABS.getBoundingClientRect();
+  const stageRect = TERM_STAGE.getBoundingClientRect();
+  const wbRect = document.querySelector('.wb-terminal')?.getBoundingClientRect();
+  info.push(`tabs=${Math.round(tabsRect.width)}x${Math.round(tabsRect.height)} stage=${Math.round(stageRect.width)}x${Math.round(stageRect.height)}`);
+  if (wbRect) info.push(`wb=${Math.round(wbRect.width)}x${Math.round(wbRect.height)}`);
+  dbg(`几何: ${info.join(' | ')}`);
 }
 
 function activateTerminal(name) {
@@ -715,7 +759,7 @@ function activateTerminal(name) {
 
 function termTheme() {
   return {
-    background: '#ffffff',
+    background: '#f8f9fc',
     foreground: '#1d2430',
     cursor: '#3455d1',
     cursorAccent: '#ffffff',
@@ -729,8 +773,15 @@ function termTheme() {
 }
 
 async function openEmbeddedTmux(name) {
+  dbg(`openEmbedded 开始 ${name}`);
+  if (typeof Terminal === 'undefined') {
+    toast('终端组件未加载，请强制刷新（⌘⇧R）', true);
+    return;
+  }
+  toast(`正在连接 tmux · ${name} …`);
+  STATUS_LEFT.textContent = `打开 ${name}：初始化…`;
   const exists = termSessions.find((r) => r.name === name);
-  if (exists) { activateTerminal(name); return; }
+  if (exists) { activateTerminal(name); STATUS_LEFT.textContent = `tmux · ${name} · 已打开已有视图`; return; }
 
   const rec = {
     name,
@@ -744,6 +795,7 @@ async function openEmbeddedTmux(name) {
   };
   rec.slot = document.createElement('div');
   rec.slot.className = 'term-slot';
+  rec.slot.style.display = 'block';
   TERM_STAGE.appendChild(rec.slot);
   const term = new Terminal({
     fontFamily: '"SF Mono", Menlo, Monaco, monospace',
@@ -752,22 +804,58 @@ async function openEmbeddedTmux(name) {
     theme: termTheme(),
   });
   rec.term = term;
-  term.open(rec.slot);
+  try {
+    term.open(rec.slot);
+    dbg('xterm.open 成功');
+  } catch (e) {
+    dbg(`xterm.open 异常 ${e.message}`);
+    rec.slot.remove();
+    toast(`终端初始化失败：${e.message}`, true);
+    return;
+  }
+  STATUS_LEFT.textContent = `打开 ${name}：终端组件已创建`;
   termSessions.push(rec);
   activeTermName = name;
   renderTermTabs();
+  dbg('renderTermTabs 完成');
   activateTerminal(name);
-  setDrawer(false);
+  dbg('activateTerminal 完成');
+  STATUS_LEFT.textContent = `打开 ${name}：标签已就绪，正在 attach…`;
   term.onData((d) => queueRecInput(rec, d));
+  try {
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type === 'keydown' && (e.metaKey || e.ctrlKey) && !e.altKey) {
+        const k = e.key.toLowerCase();
+        if (k === 'c') {
+          const sel = term.getSelection();
+          if (sel) {
+            e.preventDefault();
+            navigator.clipboard?.writeText(sel).catch(() => {});
+            return false;
+          }
+        }
+        if (k === 'v') {
+          e.preventDefault();
+          navigator.clipboard?.readText().then((t) => {
+            if (t) { rec.buf = (rec.buf || '') + t; flushRecInput(rec); }
+          }).catch(() => {});
+          return false;
+        }
+      }
+      return true;
+    });
+  } catch { /* 兼容旧版忽略 */ }
   fitActiveTerminal();
 
   try {
+    dbg('请求 terminal-open');
     const res = await fetch('/api/terminal-open', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
     const data = await res.json();
+    dbg(`terminal-open 返回 ${JSON.stringify(data).slice(0, 120)}`);
     if (!data.ok || !data.id) {
       rec.term.write(`\r\n[打开失败] ${data.error || '未知错误'}`);
       updateTermStatus();
@@ -776,9 +864,22 @@ async function openEmbeddedTmux(name) {
     rec.id = data.id;
     rec.alive = true;
     updateTermStatus();
+    STATUS_LEFT.textContent = `tmux · ${name} · 已连接`;
+    setTimeout(() => { try { rec.term.scrollToBottom(); } catch { /* 忽略 */ } }, 350);
+    dbg('已连接，等待 tmux 画面');
     connectTermStream(rec);
   } catch (e) {
+    dbg(`terminal-open 异常 ${e.message}`);
     rec.term.write(`\r\n[连接失败] ${e.message}`);
+    STATUS_LEFT.textContent = `打开 ${name} 失败：${e.message}`;
+  }
+}
+
+function handleEmbeddedOpen(name) {
+  try {
+    openEmbeddedTmux(name).catch((e) => toast(`打开内置终端失败：${e.message}`, true));
+  } catch (e) {
+    toast(`打开内置终端失败：${e.message}`, true);
   }
 }
 
@@ -830,8 +931,15 @@ async function connectTermStream(rec) {
 function fitActiveTerminal() {
   const rec = activeRec();
   if (!rec || rec.slot.clientWidth === 0) return;
-  const cw = 8.1;
-  const ch = 18.5;
+  let cw = 8.0;
+  let ch = 15.6;
+  try {
+    const dim = rec.term._core?._renderService?.dimensions?.css?.cell;
+    if (dim && dim.width > 1 && dim.height > 1) {
+      cw = dim.width;
+      ch = dim.height;
+    }
+  } catch { /* 使用回退估算 */ }
   const cols = Math.max(20, Math.floor(rec.slot.clientWidth / cw));
   const rows = Math.max(5, Math.floor(rec.slot.clientHeight / ch));
   try {
@@ -977,6 +1085,145 @@ async function browseDir() {
   }
 }
 
+async function openConfigEditor(tool, label) {
+  try {
+    const res = await fetch(`/api/config-file?tool=${encodeURIComponent(tool)}`);
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      toast(`读取失败：${data.error || ''}`, true);
+      return;
+    }
+    cfgCurrent = { tool, label, path: data.path };
+    CFG_TITLE.textContent = `编辑 ${label}`;
+    CFG_TEXT.value = data.content;
+    renderCfgPreview();
+    CFG_BACKDROP.hidden = false;
+    CFG_TEXT.focus();
+  } catch (e) {
+    toast(`读取失败：${e.message}`, true);
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function tokSpan(cls, text) {
+  return `<span class="${cls}">${escHtml(text)}</span>`;
+}
+
+function highlightJson(src) {
+  const out = [];
+  const reWord = /[A-Za-z0-9_\-+.]+/y;
+  let i = 0;
+  while (i < src.length) {
+    const ch = src[i];
+    if (ch === '"') {
+      let j = i + 1;
+      let closed = false;
+      while (j < src.length) {
+        if (src[j] === '"' && src[j - 1] !== '\\') { closed = true; j += 1; break; }
+        j += 1;
+      }
+      out.push(tokSpan('tok-str', src.slice(i, closed ? j : j)));
+      i = closed ? j : src.length;
+      continue;
+    }
+    if (/[A-Za-z0-9_\-+.]/.test(ch)) {
+      reWord.lastIndex = i;
+      const m = reWord.exec(src);
+      if (m) {
+        const word = m[0];
+        if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(word)) out.push(tokSpan('tok-num', word));
+        else if (word === 'true' || word === 'false' || word === 'null') out.push(tokSpan('tok-lit', word));
+        else out.push(escHtml(word));
+        i = m.index + word.length;
+        continue;
+      }
+    }
+    out.push(escHtml(ch));
+    i += 1;
+  }
+  return out.join('');
+}
+
+function highlightToml(src) {
+  const out = [];
+  for (const raw of src.split('\n')) {
+    const line = raw.trimEnd();
+    if (/^\s*#/.test(line)) {
+      out.push(tokSpan('tok-com', raw) + '\n');
+      continue;
+    }
+    if (/^\s*\[[^\]]*\]\s*(#.*)?$/.test(line)) {
+      const m = line.match(/^(\s*\[[^\]]*\])(\s*#.*)?$/);
+      if (m) out.push(tokSpan('tok-sec', m[1]) + (m[2] ? tokSpan('tok-com', m[2]) : '') + '\n');
+      else out.push(escHtml(raw) + '\n');
+      continue;
+    }
+    const eq = line.indexOf('=');
+    if (eq > 0) {
+      const key = line.slice(0, eq).trim();
+      let rest = line.slice(eq + 1).trim();
+      const hash = rest.indexOf('#');
+      let comment = '';
+      if (hash >= 0) {
+        const quoteBefore = rest.slice(0, hash).split('"').length % 2 === 0;
+        if (!quoteBefore) { comment = rest.slice(hash); rest = rest.slice(0, hash).trimEnd(); }
+      }
+      out.push(tokSpan('tok-key', line.slice(0, eq)));
+      out.push(' = ');
+      if (rest.startsWith('"') || rest.startsWith("'")) {
+        out.push(tokSpan('tok-str', rest.split(/#/)[0]));
+      } else {
+        const words = rest.split(/\s+/);
+        for (let w = 0; w < words.length; w++) {
+          const word = words[w];
+          if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(word)) out.push(tokSpan('tok-num', word));
+          else if (word === 'true' || word === 'false') out.push(tokSpan('tok-lit', word));
+          else out.push(escHtml(word));
+          if (w < words.length - 1) out.push(' ');
+        }
+      }
+      if (comment) out.push(' ' + tokSpan('tok-com', comment));
+      out.push('\n');
+      continue;
+    }
+    out.push(escHtml(raw) + '\n');
+  }
+  return out.join('');
+}
+
+function renderCfgPreview() {
+  const src = CFG_TEXT.value;
+  CFG_PRE.innerHTML = cfgCurrent?.tool === 'claude' ? highlightJson(src) : highlightToml(src);
+  CFG_PRE.scrollTop = CFG_TEXT.scrollTop;
+}
+
+async function saveConfigEditor() {
+  if (!cfgCurrent) return;
+  CFG_SAVE.disabled = true;
+  try {
+    const res = await fetch('/api/config-save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool: cfgCurrent.tool, content: CFG_TEXT.value }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`保存失败：${data.error || ''}`, true);
+      return;
+    }
+    CFG_BACKDROP.hidden = true;
+    toast('已保存（原文件已备份）');
+    await refresh();
+  } catch (e) {
+    toast(`保存失败：${e.message}`, true);
+  } finally {
+    CFG_SAVE.disabled = false;
+  }
+}
+
 function showResumeModal(text, command) {
   MODAL_TITLE.textContent = '无法自动恢复';
   MODAL_TEXT.textContent = text;
@@ -1072,11 +1319,19 @@ for (const btn of document.querySelectorAll('[data-search]')) {
 RAIL_TOGGLE.addEventListener('click', () => setDrawer(!drawerOpen));
 DRAWER_CLOSE.addEventListener('click', () => setDrawer(false));
 TERM_NEW.addEventListener('click', openNewSession);
+TERM_CLEAR.addEventListener('click', clearActiveTerm);
 document.getElementById('drawerNew').addEventListener('click', openNewSession);
 document.getElementById('emptyNew').addEventListener('click', openNewSession);
 DIR_BROWSE.addEventListener('click', browseDir);
 NEW_CANCEL.addEventListener('click', () => { NEW_BACKDROP.hidden = true; });
 NEW_CREATE.addEventListener('click', createNewSession);
+CFG_CANCEL.addEventListener('click', () => { CFG_BACKDROP.hidden = true; });
+CFG_SAVE.addEventListener('click', saveConfigEditor);
+CFG_TEXT.addEventListener('input', renderCfgPreview);
+CFG_TEXT.addEventListener('scroll', () => {
+  CFG_PRE.scrollTop = CFG_TEXT.scrollTop;
+  CFG_PRE.scrollLeft = CFG_TEXT.scrollLeft;
+});
 NEW_NAME.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); createNewSession(); } });
 for (const btn of NEW_TOOL_BTNS) {
   btn.addEventListener('click', () => {
@@ -1088,6 +1343,19 @@ for (const btn of NEW_TOOL_BTNS) {
 if (window.ResizeObserver) {
   new ResizeObserver(scheduleFit).observe(TERM_STAGE);
 }
+let resizeDbgTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeDbgTimer);
+  resizeDbgTimer = setTimeout(() => {
+    const body = document.body.getBoundingClientRect();
+    const page = document.getElementById('pageMain')?.getBoundingClientRect();
+    const wb = document.querySelector('.wb-terminal')?.getBoundingClientRect();
+    const wbw = document.querySelector('.workbench')?.getBoundingClientRect();
+    const pageStyle = page ? getComputedStyle(document.getElementById('pageMain')) : null;
+    const topbar = document.querySelector('.topbar')?.getBoundingClientRect();
+    dbg(`尺寸 body=${Math.round(body.width)}x${Math.round(body.height)} tab=${document.body.dataset.tab} pageMain=${page ? `${Math.round(page.width)}x${Math.round(page.height)}` : '-'} pageMax=${pageStyle?.maxWidth} pageMargin=${pageStyle?.margin} topbar=${topbar ? Math.round(topbar.width) : '-'} wb=${wb ? `${Math.round(wb.width)}x${Math.round(wb.height)}` : '-'} workbench=${wbw ? `${Math.round(wbw.width)}x${Math.round(wbw.height)}` : '-'}`);
+  }, 350);
+});
 document.addEventListener('keydown', (e) => {
   if (!e.metaKey && !e.ctrlKey) return;
   const key = e.key.toLowerCase();

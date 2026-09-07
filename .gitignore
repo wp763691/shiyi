@@ -11,3 +11,4 @@ app/macos/icon-src.png
 app/path-aliases.json
 
 node_modules/
+dist/

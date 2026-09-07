@@ -2,92 +2,95 @@
 
 > 把散落在 Claude Code / Codex 里的会话与技能，一处拾回。
 
-拾忆是一个**本地优先**的 macOS 桌面工具：实时查看终端里正在运行的 AI 编码会话、检索全部历史会话并一键恢复，同时统一管理两套工具链的技能、规则、MCP、Agent、命令与 Hooks。
+拾忆是一个**本地优先**的 macOS 桌面工具：实时查看正在运行的 AI 编码会话、检索全部历史会话并一键恢复，同时统一管理 Claude Code / Codex 的技能、规则、MCP、Agent、命令与 Hooks。
 
 数据全部留在本机，不依赖任何云端服务。
 
-## 功能
+## 功能概览
 
-- **会话**
-  - 实时映射 iTerm 窗口 ↔ 正在运行的 Claude Code / Codex 会话，一键聚焦
-  - 全量历史检索：标题 / 内容 / 目录 / 工具，按目录筛选
-  - 一键恢复：优先在 iTerm 新标签打开，失败自动降级到 Terminal.app 或复制命令
-  - 删除会话：移入本地回收目录，可恢复
-- **技能**
-  - 全局 / 项目两级浏览，来源标签（Claude Code / Codex / 本地）
-  - 编辑、定位文件夹、删除到回收
-- **配置**
-  - 规则库：`CLAUDE.md` / `AGENTS.md`（用户全局 + 项目）
-  - MCP 服务器：来源、命令/地址、env 项数（密钥不回显）、**连通性检测**
-  - Agent 角色、斜杠命令、Hooks 只读总览
+- **会话**：运行窗口 / tmux 实时映射、历史检索、一键恢复（iTerm → Terminal.app → 复制命令三级降级）、新建 / 终止会话
+- **内置终端**：基于 tmux + 系统 Python PTY 桥的终端工作台，多标签、自适应、清屏、复制粘贴
+- **技能**：全局 / 项目两级浏览，搜索、编辑、删除到回收
+- **配置**：规则 / MCP（含连通性检测）/ Agent / 命令 / Hooks / 配置文件编辑器（JSON/TOML 语法高亮 + 自动备份）
+- **隐私**：服务只监听 `127.0.0.1`；删除采用"移入本地回收目录"
+
+## 目录与文件说明
+
+```text
+Shiyi/
+├── app/                          # 应用本体
+│   ├── server.mjs                # 本地 HTTP 服务入口（Node 零依赖）
+│   ├── package.json              # 名称 / 脚本 / 引擎要求
+│   ├── lib/                      # 后端功能模块（见下表）
+│   ├── public/                   # 前端单页与资源
+│   │   ├── index.html            # 页面结构（Tab 工作台 + 弹层）
+│   │   ├── app.js                # 前端逻辑（渲染、终端、交互）
+│   │   ├── style.css             # 界面样式（明亮主题）
+│   │   ├── brand.png             # 页面左上角 Logo
+│   │   └── vendor/xterm/         # xterm.js 5.3（终端渲染，Apache-2.0）
+│   ├── macos/                    # macOS 原生壳与图标
+│   │   ├── main.swift            # Swift + WKWebView 应用壳（含编辑菜单）
+│   │   ├── Info.plist            # 应用元数据与网络策略
+│   │   ├── build_app.sh          # 一键打包 .app
+│   │   ├── make_icon.swift       # 图标绘制脚本（生成 1024 PNG）
+│   │   ├── AppIcon.icns          # 应用图标（构建时打入）
+│   │   └── .build/               # 构建产物目录（不入库）
+│   ├── path-aliases.example.json # 路径别名示例（目录改名时用）
+│   └── path-aliases.json         # 本机路径映射（不入库，如 ZYin→Shiyi）
+├── docs/
+│   ├── architecture.md           # 架构说明与数据源清单
+│   ├── requirements.md           # 早期「知音」产品需求稿（存档）
+│   └── 安装说明.md                # 目标 Mac 安装依赖与步骤
+├── scripts/
+│   ├── setup.sh                  # 安装可选依赖（iTerm Python API venv）
+│   └── migrate-codex-path.mjs    # 目录改名后迁移 Codex 会话路径
+├── dist/                         # Release 压缩包（不入库）
+├── LICENSE                       # MIT 许可证
+├── .gitignore                    # 忽略构建产物 / 虚拟环境 / 本地配置
+└── README.md                     # 本文件
+```
+
+### app/lib 模块说明
+
+| 文件 | 职责 |
+|---|---|
+| `sessions.mjs` | 扫描 Claude Code / Codex 会话，路径别名映射，删除到回收 |
+| `skills.mjs` | 技能扫描（全局 + 项目），范围与来源识别 |
+| `registry.mjs` | 规则 / MCP / Agent / 命令 / Hooks 扫描与 MCP 连通性检测 |
+| `tmux.mjs` | tmux 会话 / 窗格探测 |
+| `termproxy.mjs` | 内置终端会话管理（attach / 输入 / 关闭 / SSE 流） |
+| `pty_bridge.py` | 系统 Python 实现的 PTY 桥（零依赖） |
+| `terminal.mjs` | iTerm / Terminal.app 自动化：聚焦、恢复、接管、终止进程 |
+| `iterm_open.py` | iTerm2 Python API 建标签辅助脚本 |
+| `configfiles.mjs` | Claude settings.json / Codex config.toml 读取、校验与备份保存 |
 
 ## 快速开始
 
-### 方式一：开发模式（浏览器面板）
+### 开发模式（浏览器面板）
 
 ```bash
-# 1. 安装可选依赖（iTerm 一键恢复；纯网页使用可跳过）
-bash scripts/setup.sh
-
-# 2. 启动服务
+bash scripts/setup.sh          # 可选：为 iTerm 一键恢复准备 venv
 cd app
-node server.mjs
+node server.mjs                # 打开 http://127.0.0.1:8787
 ```
 
-打开 <http://127.0.0.1:8787>。
-
-### 方式二：打包为 macOS 应用
+### 打包 macOS 应用
 
 ```bash
-bash scripts/setup.sh        # 首次需要
-bash app/macos/build_app.sh  # 产物在 app/macos/.build/拾忆.app
+bash app/macos/build_app.sh
 open "app/macos/.build/拾忆.app"
 ```
 
-## 依赖与要求
+## 依赖
 
-- macOS 12+（App 壳基于 Swift + WebKit；命令行模式仅需 Node.js 18+）
-- Node.js（内置模块，无 npm 运行时依赖）
-- 可选：iTerm2，并在 `Settings → General → Magic` 勾选 **Enable Python API**（提供一键在 iTerm 新标签恢复会话的能力）
-- 会话恢复兼容任意通过 Anthropic 兼容端点接入的模型（Claude、DeepSeek 等），配置继承自你本机的 Claude Code / Codex
-
-## 目录结构
-
-```text
-.
-├── app/                    # 应用本体
-│   ├── server.mjs          # 本地 HTTP 服务（零依赖 Node）
-│   ├── lib/                # 会话 / 技能 / 规则 / MCP 扫描与检测
-│   ├── public/             # 前端单页（Tab 式管理界面）
-│   ├── macos/              # macOS 原生壳（Swift + WebKit）
-│   └── package.json
-├── docs/
-│   ├── architecture.md     # 架构与数据源说明
-│   └── requirements.md     # 早期产品需求稿（存档）
-└── scripts/
-    ├── setup.sh                    # 本地依赖安装
-    └── migrate-codex-path.mjs      # 目录改名后迁移 Codex 会话路径
-```
+- Node.js 18+（运行服务）
+- tmux（内置终端）
+- Claude Code / Codex CLI（会话功能）
+- iTerm2（可选，开启 Enable Python API 后可一键恢复 iTerm 标签）
 
 ## 目录改名后怎么办
 
-如果移动了项目所在的绝对路径（例如 `ZYin` → `Shiyi`）：
-
-1. 在 `app/path-aliases.json`（不入库，参考 `app/path-aliases.example.json`）里登记 `old → new` 映射，面板会立即按新路径显示与恢复历史会话；
-2. 退出所有相关 Codex 会话后，运行物理迁移（把会话文件里记录的旧路径改写为新路径）：
-
-   ```bash
-   node scripts/migrate-codex-path.mjs /旧/绝对/路径 /新/绝对/路径
-   # 先加 --dry 预检
-   ```
-
-> 正在运行的 Codex 会话会持有会话文件句柄，迁移前必须先退出，避免数据损坏。
-
-## 隐私与安全
-
-- 服务只监听 `127.0.0.1`，所有数据（会话记录、配置）只在本机读写
-- MCP 配置中的环境变量/密钥只在进程内使用，绝不回传到界面
-- 删除操作统一采用"移入本地回收目录"而非物理删除，可手动找回
+在 `app/path-aliases.json` 登记 `old → new`（参考 `path-aliases.example.json`），再运行 `scripts/migrate-codex-path.mjs` 做物理迁移。
 
 ## License
 

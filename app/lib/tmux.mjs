@@ -43,5 +43,6 @@ function classify(command) {
   if (!c) return null;
   if (c.includes('claude') || c.includes('claude-code')) return 'claude';
   if (c.includes('codex')) return 'codex';
+  if (/(^|[\/\s])(bash|zsh|sh|fish)(\s|$)/.test(c)) return 'bash';
   return null;
 }
