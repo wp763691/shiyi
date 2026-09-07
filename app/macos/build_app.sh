@@ -30,7 +30,7 @@ cp "$ROOT/README.md" "$APP/Contents/Resources/" 2>/dev/null || true
 # 2. 编译原生壳
 swiftc -O \
   "$ROOT/macos/main.swift" \
-  -o "$APP/Contents/MacOS/ZYinSessions" \
+  -o "$APP/Contents/MacOS/ShiyiSessions" \
   -framework Cocoa -framework WebKit 2>&1
 
 # 3. Info.plist

@@ -7,11 +7,11 @@
   <key>CFBundleDisplayName</key>
   <string>拾忆</string>
   <key>CFBundleExecutable</key>
-  <string>ZYinSessions</string>
+  <string>ShiyiSessions</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
-  <string>com.zyin.sessions</string>
+  <string>com.shiyi.sessions</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
