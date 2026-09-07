@@ -8,9 +8,17 @@
 
 ## 截图
 
-| 会话工作台 | 技能库 | 配置中心 |
-|---|---|---|
-| ![sessions](docs/screenshots/sessions.png) | ![skills](docs/screenshots/skills.png) | ![config](docs/screenshots/config.png) |
+### 会话工作台
+
+![会话工作台](docs/screenshots/sessions.png)
+
+### 技能库
+
+![技能库](docs/screenshots/skills.png)
+
+### 配置中心
+
+![配置中心](docs/screenshots/config.png)
 
 ## English
 

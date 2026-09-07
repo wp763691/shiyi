@@ -14,7 +14,17 @@
 
 ## Screenshots
 
-See [docs/screenshots](docs/screenshots).
+### Session Workbench
+
+![Session Workbench](docs/screenshots/sessions.png)
+
+### Skills
+
+![Skills](docs/screenshots/skills.png)
+
+### Config Center
+
+![Config Center](docs/screenshots/config.png)
 
 ## Requirements
 
