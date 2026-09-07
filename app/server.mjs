@@ -70,6 +70,7 @@ async function serveStatic(req, res, urlPath) {
 
 // 把运行中的 claude 进程（按 cwd）关联到最近的会话文件
 async function buildState() {
+  if (process.env.SHIYI_DEMO === '1') return demoState();
   const scan = await scanAllSessions();
   const errors = scan.errors || [];
   const sessions = scan.sessions;
@@ -159,6 +160,50 @@ async function buildState() {
     configFiles,
     errors,
     now: Date.now(),
+  };
+}
+
+function demoState() {
+  const now = Date.now();
+  return {
+    sessions: [
+      {
+        sessionId: 'demo-session-0001', tool: 'claude', title: '项目架构重构讨论', cwd: '/Users/demo/code/awesome-app',
+        branch: 'main', lastTs: now - 3 * 60000, lastUserText: '先把 auth 模块的依赖梳理一遍', exchanges: 32,
+        dirName: '…/code/awesome-app', mb: 0.6,
+      },
+      {
+        sessionId: 'demo-session-0002', tool: 'codex', title: '修 CI 缓存问题', cwd: '/Users/demo/code/awesome-app',
+        branch: 'feat/ci', lastTs: now - 2 * 3600000, lastUserText: '看看 GitHub Actions 的缓存 key', exchanges: 18,
+        dirName: '…/code/awesome-app', mb: 0.3,
+      },
+    ],
+    windows: [],
+    tmuxSessions: [
+      { source: 'tmux', name: 'shiyi-demo', window: '0', pane: '0', tool: 'claude', command: 'claude', cwd: '/Users/demo/code/awesome-app', attached: false, tty: 'ttys010' },
+    ],
+    skills: [
+      { name: 'code-reviewer', description: '按行业惯例审查 Pull Request 的风险与测试覆盖。', tool: 'claude', toolLabel: 'Claude Code', scope: 'global', folder: '/Users/demo/.claude/skills/code-reviewer', mtime: now - 86400000 },
+      { name: 'doc-writer', description: '把代码变更整理成清晰的中英文技术文档。', tool: 'codex', toolLabel: 'Codex', scope: 'global', folder: '/Users/demo/.codex/skills/doc-writer', mtime: now - 172800000 },
+      { name: 'architect-mentor', description: '项目级架构评审与改进建议。', tool: 'claude', toolLabel: 'Claude Code', scope: 'project', project: '/Users/demo/code/awesome-app', projectName: '…/code/awesome-app', folder: '/Users/demo/code/awesome-app/.claude/skills/architect-mentor', mtime: now - 3600000 },
+    ],
+    rules: [
+      { kind: 'rule', name: 'CLAUDE.md', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/CLAUDE.md', lines: 42, mtime: now - 3600000, preview: '团队规范：默认英文注释，提交信息遵循 Conventional Commits…' },
+      { kind: 'rule', name: 'AGENTS.md', tool: 'codex', scope: 'global', path: '/Users/demo/.codex/AGENTS.md', lines: 20, mtime: now - 7200000, preview: 'Codex 通用守则…' },
+    ],
+    mcp: [
+      { kind: 'mcp', name: 'codegraph', tool: 'claude', scope: 'global', sourceFile: '/Users/demo/.claude.json', type: 'stdio', command: 'codegraph', args: [], envKeys: [], mtime: now - 3600000 },
+      { kind: 'mcp', name: 'context7', tool: 'claude', scope: 'global', sourceFile: '/Users/demo/.claude.json', type: 'http', url: 'https://mcp.context7.com/mcp', envKeys: [], mtime: now - 3600000 },
+    ],
+    agents: [], commands: [], hooks: [
+      { kind: 'hook', event: 'PreToolUse', matcher: 'Grep|Glob|Bash', command: 'node ~/.claude/hooks/context.cjs', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/settings.json', mtime: now - 3600000 },
+    ],
+    configFiles: [
+      { tool: 'claude', label: 'Claude Code settings', path: '/Users/demo/.claude/settings.json', exists: true, bytes: 1280, mtime: now - 3600000, scope: 'global' },
+      { tool: 'codex', label: 'Codex config', path: '/Users/demo/.codex/config.toml', exists: true, bytes: 860, mtime: now - 3600000, scope: 'global' },
+    ],
+    errors: [],
+    now,
   };
 }
 

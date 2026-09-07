@@ -1397,6 +1397,7 @@ for (const btn of SKILL_SCOPE_BTNS) {
 DIR_FILTER.addEventListener('change', renderHistory);
 
 refresh();
-activateTab((() => { try { return localStorage.getItem('shiyi.tab'); } catch { return null; } })() || 'sessions');
+activateTab(location.hash.replace('#', '') || (() => { try { return localStorage.getItem('shiyi.tab'); } catch { return null; } })() || 'sessions');
+window.addEventListener('hashchange', () => activateTab(location.hash.replace('#', '')));
 setInterval(refresh, 5000);
 setInterval(() => { renderLive(); renderHistory(); renderSkills(); renderConfig(); }, 30000);

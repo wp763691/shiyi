@@ -2,6 +2,20 @@
 
 > 把散落在 Claude Code / Codex 里的会话与技能，一处拾回。
 
+![License](https://img.shields.io/github/license/wp763691/shiyi)
+![macOS](https://img.shields.io/badge/macOS-12%2B-blue)
+![Platform](https://img.shields.io/badge/Apple%20Silicon-supported-green)
+
+## 截图
+
+| 会话工作台 | 技能库 | 配置中心 |
+|---|---|---|
+| ![sessions](docs/screenshots/sessions.png) | ![skills](docs/screenshots/skills.png) | ![config](docs/screenshots/config.png) |
+
+## English
+
+[README.en.md](README.en.md)
+
 拾忆是一个**本地优先**的 macOS 桌面工具：实时查看正在运行的 AI 编码会话、检索全部历史会话并一键恢复，同时统一管理 Claude Code / Codex 的技能、规则、MCP、Agent、命令与 Hooks。
 
 数据全部留在本机，不依赖任何云端服务。

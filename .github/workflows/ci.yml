@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node syntax check
+        run: |
+          node --version
+          node --check app/server.mjs
+          node --check app/lib/*.mjs
+          node --check app/public/app.js
+
+      - name: Build macOS app
+        run: |
+          bash app/macos/build_app.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 拾忆-macos-arm64
+          path: app/macos/.build/拾忆.app
