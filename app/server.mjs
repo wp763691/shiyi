@@ -20,6 +20,7 @@ import {
 } from './lib/registry.mjs';
 import { listTmuxAgents } from './lib/tmux.mjs';
 import { scanConfigFiles, readConfigFile, saveConfigFile } from './lib/configfiles.mjs';
+import { loadTranslations, translateSkills, setManualTranslation, translationStats } from './lib/translations.mjs';
 import {
   openTmuxTerminal,
   writeTerminalInput,
@@ -173,9 +174,19 @@ async function buildState() {
     hooks,
     tmuxSessions: tmuxAgents.items || [],
     configFiles,
+    skillTranslations: await loadTranslations(),
+    translationStats: await translationStats(skills),
     errors,
     now: Date.now(),
   };
+}
+
+async function projectDirsForTranslate() {
+  const scan = await scanAllSessions();
+  const home = os.homedir();
+  return [...new Set(scan.sessions.map((s) => s.cwd).filter(Boolean))]
+    .filter((p) => p && p !== home && !p.startsWith(home + path.sep + '.'))
+    .slice(0, 300);
 }
 
 function demoState() {
@@ -386,6 +397,25 @@ const server = http.createServer(async (req, res) => {
         debugLogs.push(`${new Date().toISOString().slice(11, 19)} ${String(body.msg || '').slice(0, 500)}`);
         if (debugLogs.length > 200) debugLogs.shift();
         sendJson(res, 200, { ok: true });
+        return;
+      }
+      if (body.action === 'translate-skills') {
+        try {
+          const skills = await scanSkills(await projectDirsForTranslate());
+          const out = await translateSkills(skills, { force: Boolean(body.force) });
+          sendJson(res, out.ok ? 200 : 500, out);
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+      if (body.action === 'set-skill-translation') {
+        try {
+          const out = await setManualTranslation(body.path, body.nameZh || '', body.descZh || '');
+          sendJson(res, 200, out);
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
         return;
       }
       sendJson(res, 400, { ok: false, error: '未知动作' });

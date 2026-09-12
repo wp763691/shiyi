@@ -4,6 +4,16 @@ const LIVE_COUNT = document.getElementById('liveCount');
 const HIST_COUNT = document.getElementById('historyCount');
 const SKILLS_COUNT = document.getElementById('skillsCount');
 const SKILL_ROWS = document.getElementById('skillRows');
+const SKILL_TRANSLATE = document.getElementById('skillTranslate');
+const SKILL_LANG_TOGGLE = document.getElementById('skillLangToggle');
+const TRANS_BACKDROP = document.getElementById('transBackdrop');
+const TRANS_TITLE = document.getElementById('transTitle');
+const TRANS_NAME = document.getElementById('transName');
+const TRANS_DESC = document.getElementById('transDesc');
+const TRANS_CANCEL = document.getElementById('transCancel');
+const TRANS_SAVE = document.getElementById('transSave');
+let showZh = true;
+let transCurrent = null;
 const TAB_SESSIONS = document.getElementById('tab-sessions');
 const TAB_SKILLS = document.getElementById('tab-skills');
 const TAB_CONFIG = document.getElementById('tab-config');
@@ -111,6 +121,7 @@ let state = {
   sessions: [], windows: [], tmuxSessions: [], skills: [],
   rules: [], mcp: [], agents: [], commands: [], hooks: [],
   configFiles: [],
+  skillTranslations: {}, translationStats: { total: 0, translated: 0 },
   errors: [], now: Date.now(),
 };
 let lastError = null;
@@ -439,6 +450,13 @@ function skillsFiltered() {
   });
 }
 
+function translationFor(s) {
+  const e = (state.skillTranslations || {})[s.path];
+  if (!e) return null;
+  const fresh = e.locked || (e.mtime === s.mtime && e.size === s.bytes);
+  return fresh ? e : null;
+}
+
 function renderSkills() {
   const all = state.skills || [];
   const list = skillsFiltered();
@@ -459,16 +477,19 @@ function renderSkills() {
     const main = el('div', 'row-main');
 
     const line1 = el('div', 'row-title');
-    line1.textContent = s.name;
+    const tr = translationFor(s);
+    line1.textContent = showZh && tr?.nameZh ? tr.nameZh : s.name;
     const toolCls = s.tool === 'codex' ? 'tool-codex' : s.tool === 'agents' ? 'tool-agents' : 'tool-claude';
     const toolText = s.tool === 'agents' ? '本地' : s.toolLabel;
     line1.append(el('span', `tag ${toolCls}`, toolText));
     line1.append(el('span', `tag scope-${s.scope}`, s.scope === 'project' ? '项目' : '全局'));
+    if (showZh && !tr) line1.append(el('span', 'tag', '未译'));
     main.appendChild(line1);
 
-    if (s.description) {
+    const descText = showZh && tr?.descZh ? tr.descZh : s.description;
+    if (descText) {
       const desc = el('div', 'row-preview');
-      desc.textContent = s.description;
+      desc.textContent = descText;
       main.appendChild(desc);
     }
 
@@ -480,6 +501,10 @@ function renderSkills() {
     row.appendChild(main);
 
     const actions = el('div', 'row-actions');
+    const transBtn = el('button', 'btn small', tr ? '改译' : '译');
+    transBtn.title = '修正中文译文（保存后锁定）';
+    transBtn.onclick = () => openTransEditor(s, tr);
+    actions.appendChild(transBtn);
     const folderBtn = el('button', 'btn small', '文件夹');
     folderBtn.onclick = () => act({ action: 'open', reveal: true, path: s.folder });
     const editBtn = el('button', 'btn small', '编辑');
@@ -1186,6 +1211,66 @@ async function browseDir() {
   }
 }
 
+function openTransEditor(skill, tr) {
+  transCurrent = skill;
+  TRANS_TITLE.textContent = `修正译文 · ${skill.name}`;
+  TRANS_NAME.value = tr?.nameZh || '';
+  TRANS_DESC.value = tr?.descZh || '';
+  TRANS_BACKDROP.hidden = false;
+  TRANS_NAME.focus();
+}
+
+async function saveTransEditor() {
+  if (!transCurrent) return;
+  TRANS_SAVE.disabled = true;
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'set-skill-translation',
+        path: transCurrent.path,
+        nameZh: TRANS_NAME.value.trim(),
+        descZh: TRANS_DESC.value.trim(),
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`保存失败：${data.error || ''}`, true);
+      return;
+    }
+    TRANS_BACKDROP.hidden = true;
+    toast('译文已保存并锁定');
+    await refresh();
+  } catch (e) {
+    toast(`保存失败：${e.message}`, true);
+  } finally {
+    TRANS_SAVE.disabled = false;
+  }
+}
+
+async function translateMissingSkills() {
+  SKILL_TRANSLATE.disabled = true;
+  const old = SKILL_TRANSLATE.textContent;
+  SKILL_TRANSLATE.textContent = '翻译中…';
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'translate-skills', force: false }),
+    });
+    const data = await res.json();
+    if (!data.ok) toast(`翻译失败：${data.error || ''}`, true);
+    else toast(`已翻译 ${data.translated} 项（共 ${data.total}）`);
+    await refresh();
+  } catch (e) {
+    toast(`翻译失败：${e.message}`, true);
+  } finally {
+    SKILL_TRANSLATE.textContent = old;
+    SKILL_TRANSLATE.disabled = false;
+  }
+}
+
 async function openConfigEditor(tool, label) {
   try {
     const res = await fetch(`/api/config-file?tool=${encodeURIComponent(tool)}`);
@@ -1421,6 +1506,14 @@ RAIL_TOGGLE.addEventListener('click', () => setDrawer(!drawerOpen));
 DRAWER_CLOSE.addEventListener('click', () => setDrawer(false));
 TERM_NEW.addEventListener('click', openNewSession);
 TERM_CLEAR.addEventListener('click', clearActiveTerm);
+SKILL_TRANSLATE.addEventListener('click', translateMissingSkills);
+SKILL_LANG_TOGGLE.addEventListener('click', () => {
+  showZh = !showZh;
+  SKILL_LANG_TOGGLE.textContent = showZh ? '中 / EN' : 'EN';
+  renderSkills();
+});
+TRANS_CANCEL.addEventListener('click', () => { TRANS_BACKDROP.hidden = true; });
+TRANS_SAVE.addEventListener('click', saveTransEditor);
 document.getElementById('drawerNew').addEventListener('click', openNewSession);
 document.getElementById('emptyNew').addEventListener('click', openNewSession);
 DIR_BROWSE.addEventListener('click', browseDir);

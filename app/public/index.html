@@ -116,6 +116,8 @@
           <span class="count" id="skillsCount">0</span>
           <span class="head-note">Claude Code · Codex · 本地技能</span>
           <div class="toolbar">
+            <button class="btn small" id="skillTranslate">翻译缺失项</button>
+            <button class="btn small" id="skillLangToggle" title="切换中文/英文">中 / EN</button>
             <div class="seg" role="group" aria-label="技能范围">
               <button class="seg-btn active" data-scope="all">全部</button>
               <button class="seg-btn" data-scope="global">全局</button>
@@ -201,6 +203,19 @@
       <div class="modal-actions">
         <button id="cfgCancel" class="btn">取消</button>
         <button id="cfgSave" class="btn primary">保存</button>
+      </div>
+    </div>
+  </div>
+  <div id="transBackdrop" class="backdrop" hidden>
+    <div class="modal">
+      <h3 id="transTitle">修正译文</h3>
+      <label class="field-label">中文名称</label>
+      <input id="transName" class="field-input" autocomplete="off">
+      <label class="field-label">中文描述</label>
+      <textarea id="transDesc" class="cfg-textarea" style="min-height:120px"></textarea>
+      <div class="modal-actions">
+        <button id="transCancel" class="btn">取消</button>
+        <button id="transSave" class="btn primary">保存并锁定</button>
       </div>
     </div>
   </div>
