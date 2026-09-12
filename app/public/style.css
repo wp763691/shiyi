@@ -250,7 +250,7 @@ body[data-tab='sessions'] .tabbar { flex: 0 0 auto; }
 body[data-tab='sessions'] #pageMain {
   max-width: none;
   margin: 0;
-  padding: 8px 18px 14px;
+  padding: 12px 22px 18px;
   height: auto;
   flex: 1; min-height: 0;
   display: flex; flex-direction: column;
@@ -422,7 +422,7 @@ body[data-tab='config'] .brand-text p { display: block; }
 .term-tab b { font-weight: 400; color: #a2a9b8; padding: 0 2px; }
 .term-tab b:hover { color: var(--danger); }
 .term-stage {
-  flex: 1; min-height: 0; display: flex; padding: 8px 10px 10px; overflow: hidden;
+  flex: 1; min-height: 0; display: flex; padding: 12px 14px 14px; overflow: hidden;
   background: #eceef3;
 }
 .term-empty { margin: auto; text-align: center; color: var(--faint); }
