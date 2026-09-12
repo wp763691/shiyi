@@ -876,6 +876,7 @@ async function openEmbeddedTmux(name) {
     fontSize: 13,
     cursorBlink: true,
     allowTransparency: true,
+    macOptionClickForcesSelection: true,
     theme: termTheme(),
   });
   rec.term = term;
@@ -1028,7 +1029,7 @@ function fitActiveTerminal() {
   const rows = Math.max(5, Math.floor(availH / ch));
   try {
     rec.term.resize(cols, rows);
-    STATUS_RIGHT.textContent = `${cols}×${rows} · ⌘L 列表 · ⌘1-9 切换标签`;
+    STATUS_RIGHT.textContent = `${cols}×${rows} · ⌥拖动选择复制 · ⌘L 列表 · ⌘1-9 切标签`;
   } catch { /* 忽略 */ }
   try {
     const slot = rec.slot.getBoundingClientRect();
