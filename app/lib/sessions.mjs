@@ -249,6 +249,7 @@ function baseMeta(fp, s, tool) {
 }
 
 function finalizeMeta(meta) {
+  if (meta.firstTitle) meta.title = meta.firstTitle;
   if (!meta.title) meta.title = meta.lastUserText ? meta.lastUserText.slice(0, 42) : '未命名会话';
   meta.cwd = mapCwd(meta.cwd);
   meta.dirName = meta.cwd ? shortPath(meta.cwd) : path.basename(path.dirname(meta.path));
@@ -284,7 +285,10 @@ async function parseClaudeFile(fp, s) {
 
     switch (o.type) {
       case 'ai-title':
-        if (o.aiTitle) meta.title = o.aiTitle;
+        if (o.aiTitle) {
+          if (!meta.firstTitle) meta.firstTitle = o.aiTitle;
+          meta.latestTitle = o.aiTitle;
+        }
         break;
       case 'user': {
         const txt = extractUserText(o.message);

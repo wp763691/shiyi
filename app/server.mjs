@@ -103,11 +103,26 @@ async function buildState() {
     const key = `${s.tool}::${s.cwd}`;
     if (!byCwd.has(key)) byCwd.set(key, s);
   }
+  const sessionsById = new Map(sessions.map((s) => [String(s.sessionId).toLowerCase(), s]));
+  const activeForProc = (proc, tool) => {
+    if (proc?.sessionId) {
+      const hit = sessionsById.get(String(proc.sessionId).toLowerCase());
+      if (hit) return hit;
+    }
+    if (proc?.sessionFile) {
+      const base = path.basename(proc.sessionFile, '.jsonl');
+      const uuid = (base.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
+      const hit = sessionsById.get(base.toLowerCase()) || (uuid ? sessionsById.get(uuid.toLowerCase()) : null);
+      if (hit) return hit;
+    }
+    return tool && proc?.cwd ? byCwd.get(`${tool}::${proc.cwd}`) : null;
+  };
 
   const windows = (term.windows || []).map((w) => {
-      const proc = (procsRes.procs || []).find((p) => normalizeTty(p.tty) === normalizeTty(w.tty));
+    const sameTty = (procsRes.procs || []).filter((p) => normalizeTty(p.tty) === normalizeTty(w.tty));
+    const proc = sameTty.find((p) => p.sessionFile) || sameTty[0];
     const tool = proc?.tool || null;
-    const active = tool && proc?.cwd && byCwd.get(`${tool}::${proc.cwd}`);
+    const active = activeForProc(proc, tool);
     return {
       win: w.win,
       tab: w.tab,
@@ -130,7 +145,7 @@ async function buildState() {
     const tty = normalizeTty(p.tty);
     if (!tty || matchedTtys.has(tty) || tmuxTtys.has(tty)) continue;
     const tool = p.tool || null;
-    const active = tool && p.cwd && byCwd.get(`${tool}::${p.cwd}`);
+    const active = activeForProc(p, tool);
     windows.push({
       win: null,
       tab: null,

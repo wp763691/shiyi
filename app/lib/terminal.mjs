@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { access, writeFile, chmod } from 'node:fs/promises';
+import { access, writeFile, chmod, readFile } from 'node:fs/promises';
 
 const execFileP = promisify(execFile);
 const binCache = new Map();
@@ -90,6 +90,34 @@ export async function runningClaudeProcs() {
         const mm = out.stdout.match(/\nn(.*)/);
         p.cwd = mm ? mm[1] : '';
       } catch { /* lsof 可能受限，忽略 */ }
+      // 找到该进程正在写入的 transcript 文件（精确定位会话，避免同目录误配）
+      try {
+        const out = await execFileP('/usr/sbin/lsof', ['-p', String(p.pid), '-Fn'], { timeout: 4000 });
+        for (const line of out.stdout.split('\n')) {
+          if (!line.startsWith('n')) continue;
+          const f = line.slice(1);
+          if (
+            f.endsWith('.jsonl') &&
+            (f.includes('/.claude/projects/') || f.includes('/.codex/sessions/') || f.includes('/.codex/archived_sessions/'))
+          ) {
+            p.sessionFile = f;
+            break;
+          }
+        }
+      } catch { /* 忽略 */ }
+      // Claude Code 官方 PID → sessionId 映射
+      if (tool === 'claude') {
+        try {
+          const raw = await readFile(path.join(os.homedir(), '.claude', 'sessions', `${p.pid}.json`), 'utf8');
+          const info = JSON.parse(raw);
+          if (info && typeof info.sessionId === 'string') {
+            p.sessionId = info.sessionId;
+            if (typeof info.name === 'string' && info.nameSource && info.nameSource !== 'derived') {
+              p.sessionName = info.name;
+            }
+          }
+        } catch { /* 映射文件不存在则忽略 */ }
+      }
       procs.push(p);
     }
     return { ok: true, procs, error: null };
