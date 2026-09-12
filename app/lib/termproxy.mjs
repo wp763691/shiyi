@@ -12,7 +12,7 @@ const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const PYTHON = process.env.ZYIN_PYTHON || '/usr/bin/python3';
 
 export function openTmuxTerminal(sessionName) {
-  if (!sessionName || !/^[\w.-]+$/.test(sessionName)) {
+  if (!sessionName || sessionName.startsWith('-') || !/^[\p{L}\p{N}_ .-]+$/u.test(sessionName)) {
     return { ok: false, error: '非法的 tmux 会话名' };
   }
   const id = randomUUID();
