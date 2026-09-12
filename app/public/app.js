@@ -191,8 +191,46 @@ function liveAll() {
     cwd: t.cwd,
     attached: t.attached,
     pane: `${t.window}.${t.pane}`,
+    createdMs: t.createdMs || 0,
   }));
-  return [...windows, ...tmux];
+  const all = [...windows, ...tmux];
+  const pins = livePins();
+  all.sort((a, b) => {
+    const pa = pins[liveKey(a)] || 0;
+    const pb = pins[liveKey(b)] || 0;
+    if (pa && pb) return pb - pa;
+    if (pa) return -1;
+    if (pb) return 1;
+    return liveSortTs(b) - liveSortTs(a);
+  });
+  return all;
+}
+
+function liveKey(w) {
+  if (w.tmux) return `tmux:${w.sessionName}`;
+  if (w.win) return `win:${w.win}:${w.tab}`;
+  return `pid:${w.procPid || w.tty || w.name || ''}`;
+}
+
+function liveSortTs(w) {
+  return w.createdMs || w.session?.lastTs || 0;
+}
+
+function livePins() {
+  try {
+    return JSON.parse(localStorage.getItem('shiyi.pins') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function togglePin(w) {
+  const key = liveKey(w);
+  const pins = livePins();
+  if (pins[key]) delete pins[key];
+  else pins[key] = Date.now();
+  try { localStorage.setItem('shiyi.pins', JSON.stringify(pins)); } catch { /* 忽略 */ }
+  renderLive();
 }
 
 function renderLive() {
@@ -232,6 +270,11 @@ function renderLive() {
     row.appendChild(main);
 
     const actions = el('div', 'row-actions');
+    const pinned = Boolean(livePins()[liveKey(w)]);
+    const pinBtn = el('button', `btn small ${pinned ? 'pin-on' : ''}`, pinned ? '★' : '☆');
+    pinBtn.title = pinned ? '取消置顶' : '置顶该会话';
+    pinBtn.onclick = () => togglePin(w);
+    actions.appendChild(pinBtn);
     const terminateBtn = el('button', 'btn danger small', '终止');
     terminateBtn.onclick = () => {
       const label = w.tmux ? `tmux 会话「${w.sessionName}」` : `进程 ${w.procPid} 的 ${w.tool === 'codex' ? 'Codex' : 'Claude'} 会话`;

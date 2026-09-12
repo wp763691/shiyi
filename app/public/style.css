@@ -164,6 +164,7 @@ select {
 .btn.primary:hover { background: #10131e; border-color: #10131e; color: #fff; }
 .btn.danger { color: var(--danger); border-color: #e5c0bd; background: #fdf6f5; }
 .btn.danger:hover { background: #fbebea; border-color: #d9a19c; color: #a8342e; }
+.btn.pin-on { color: #b07800; border-color: #ecd9a8; background: #fdf6e5; }
 .btn.small { padding: 5px 9px; font-size: 11.5px; }
 
 .empty {
