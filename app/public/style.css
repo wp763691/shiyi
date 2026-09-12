@@ -446,6 +446,7 @@ body[data-tab='config'] .brand-text p { display: block; }
   letter-spacing: 0.08em; pointer-events: none; user-select: none;
 }
 .term-slot .xterm { height: 100%; padding: 10px 14px; }
+.term-slot .xterm ::selection { background: rgba(52, 85, 209, 0.22); color: #141821; }
 .term-status {
   display: flex; justify-content: space-between; gap: 12px;
   border-top: 1px solid var(--line-soft); background: #fafbfd;
