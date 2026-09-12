@@ -1016,8 +1016,15 @@ function fitActiveTerminal() {
       ch = dim.height;
     }
   } catch { /* 使用回退估算 */ }
-  const cols = Math.max(20, Math.floor(rec.slot.clientWidth / cw));
-  const rows = Math.max(5, Math.floor(rec.slot.clientHeight / ch));
+  let availW = rec.slot.clientWidth;
+  let availH = rec.slot.clientHeight;
+  try {
+    const cs = getComputedStyle(rec.term.element);
+    availW -= parseFloat(cs.paddingLeft || '0') + parseFloat(cs.paddingRight || '0');
+    availH -= parseFloat(cs.paddingTop || '0') + parseFloat(cs.paddingBottom || '0');
+  } catch { /* 忽略 */ }
+  const cols = Math.max(20, Math.floor(availW / cw));
+  const rows = Math.max(5, Math.floor(availH / ch));
   try {
     rec.term.resize(cols, rows);
     STATUS_RIGHT.textContent = `${cols}×${rows} · ⌘L 列表 · ⌘1-9 切换标签`;

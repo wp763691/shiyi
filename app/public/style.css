@@ -250,7 +250,7 @@ body[data-tab='sessions'] .tabbar { flex: 0 0 auto; }
 body[data-tab='sessions'] #pageMain {
   max-width: none;
   margin: 0;
-  padding: 12px 22px 18px;
+  padding: 8px 18px 14px;
   height: auto;
   flex: 1; min-height: 0;
   display: flex; flex-direction: column;
@@ -422,7 +422,7 @@ body[data-tab='config'] .brand-text p { display: block; }
 .term-tab b { font-weight: 400; color: #a2a9b8; padding: 0 2px; }
 .term-tab b:hover { color: var(--danger); }
 .term-stage {
-  flex: 1; min-height: 0; display: flex; padding: 12px 14px 14px; overflow: hidden;
+  flex: 1; min-height: 0; display: flex; padding: 8px 10px 10px; overflow: hidden;
   background: #eceef3;
 }
 .term-empty { margin: auto; text-align: center; color: var(--faint); }
@@ -445,7 +445,7 @@ body[data-tab='config'] .brand-text p { display: block; }
   font-size: 11px; color: rgba(120, 133, 160, 0.35);
   letter-spacing: 0.08em; pointer-events: none; user-select: none;
 }
-.term-slot .xterm { height: 100%; padding: 2px; }
+.term-slot .xterm { height: 100%; padding: 10px 14px; }
 .term-status {
   display: flex; justify-content: space-between; gap: 12px;
   border-top: 1px solid var(--line-soft); background: #fafbfd;
