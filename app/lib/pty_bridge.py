@@ -11,6 +11,8 @@ import struct
 import sys
 import termios
 
+master = None
+
 
 def set_winsize(fd, rows, cols):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
@@ -29,6 +31,7 @@ def on_winch(signum, frame):
 
 
 def main():
+    global master
     rows = int(sys.argv[1])
     cols = int(sys.argv[2])
     cmd = sys.argv[3]

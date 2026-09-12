@@ -937,6 +937,8 @@ async function openEmbeddedTmux(name) {
     }
     rec.id = data.id;
     rec.alive = true;
+    // 会话建立后立刻把当前窗口的真实行列同步给 PTY/tmux（关键：避免 tmux 仍停留在 100×34）
+    setTimeout(() => { try { fitActiveTerminal(); } catch { /* 忽略 */ } }, 150);
     updateTermStatus();
     STATUS_LEFT.textContent = `tmux · ${name} · 已连接`;
     setTimeout(() => { try { rec.term.scrollToBottom(); } catch { /* 忽略 */ } }, 350);
