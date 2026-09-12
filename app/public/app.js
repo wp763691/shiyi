@@ -253,7 +253,6 @@ function renderLive() {
     const main = el('div', 'row-main');
     const line1 = el('div', 'row-title');
     line1.textContent = liveTitle(w);
-    if (w.running) line1.append(el('span', 'tag live-tag', '运行中'));
     if (w.tmux) line1.append(el('span', 'tag tmux-tag', 'tmux'));
     const chip = toolChip(w);
     if (chip) line1.append(el('span', chip[0], chip[1]));
@@ -275,39 +274,70 @@ function renderLive() {
     pinBtn.title = pinned ? '取消置顶' : '置顶该会话';
     pinBtn.onclick = () => togglePin(w);
     actions.appendChild(pinBtn);
-    const terminateBtn = el('button', 'btn danger small', '终止');
-    terminateBtn.onclick = () => {
-      const label = w.tmux ? `tmux 会话「${w.sessionName}」` : `进程 ${w.procPid} 的 ${w.tool === 'codex' ? 'Codex' : 'Claude'} 会话`;
-      showConfirm(
-        `终止${label}？`,
-        w.tmux
-          ? '将执行 tmux kill-session，会话中的 claude/codex 会被结束。历史 transcript 仍保留，可随时恢复。'
-          : '将向该会话进程发送结束信号。历史 transcript 仍保留，可随时恢复。',
-        async () => {
-          await act({
-            action: 'terminate',
-            mode: w.tmux ? 'tmux' : 'process',
-            name: w.sessionName,
-            pid: w.procPid,
-          });
-        }
-      );
-    };
-    actions.appendChild(terminateBtn);
     if (w.tmux) {
-      const embedBtn = el('button', 'btn', '内置终端');
-      embedBtn.onclick = () => handleEmbeddedOpen(w.sessionName);
-      const attachBtn = el('button', 'btn primary', '接管会话');
-      attachBtn.onclick = () => act({ action: 'tmux-attach', name: w.sessionName });
-      actions.append(embedBtn, attachBtn);
-    } else if (w.win) {
-      const focusBtn = el('button', 'btn', '聚焦窗口');
-      focusBtn.onclick = () => act({ action: 'focus', win: w.win, tab: w.tab });
-      actions.appendChild(focusBtn);
+      const quick = el('button', 'btn small quick-term', '终端');
+      quick.title = '内置终端'; 
+      quick.onclick = () => handleEmbeddedOpen(w.sessionName);
+      actions.appendChild(quick);
     }
+    const more = el('button', 'btn small more-btn', '⋯');
+    more.title = '更多操作';
+    more.onclick = (e) => showRowMenu(e.currentTarget, w);
+    actions.appendChild(more);
     row.appendChild(actions);
     LIVE.appendChild(row);
   }
+}
+
+function terminateRow(w) {
+  const label = w.tmux
+    ? `tmux 会话「${w.sessionName}」`
+    : `进程 ${w.procPid} 的 ${w.tool === 'codex' ? 'Codex' : 'Claude'} 会话`;
+  showConfirm(
+    `终止${label}？`,
+    w.tmux
+      ? '将执行 tmux kill-session，会话中的 claude/codex 会被结束。历史 transcript 仍保留，可随时恢复。'
+      : '将向该会话进程发送结束信号。历史 transcript 仍保留，可随时恢复。',
+    async () => {
+      await act({
+        action: 'terminate',
+        mode: w.tmux ? 'tmux' : 'process',
+        name: w.sessionName,
+        pid: w.procPid,
+      });
+    }
+  );
+}
+
+function closeRowMenu() {
+  document.querySelectorAll('.row-menu').forEach((m) => m.remove());
+}
+
+function showRowMenu(anchor, w) {
+  const exists = document.querySelector('.row-menu');
+  closeRowMenu();
+  if (exists) return;
+  const menu = el('div', 'row-menu');
+  const item = (label, fn, danger) => {
+    const b = el('button', `row-menu-item${danger ? ' danger' : ''}`, label);
+    b.onclick = () => { closeRowMenu(); fn(); };
+    menu.appendChild(b);
+  };
+  if (w.tmux) {
+    item('内置终端', () => handleEmbeddedOpen(w.sessionName));
+    item('接管会话（iTerm）', () => act({ action: 'tmux-attach', name: w.sessionName }));
+  } else if (w.win) {
+    item('聚焦窗口', () => act({ action: 'focus', win: w.win, tab: w.tab }));
+  }
+  item('终止会话', () => terminateRow(w), true);
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.top = `${Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 10)}px`;
+  menu.style.left = `${Math.min(r.left, window.innerWidth - menu.offsetWidth - 10)}px`;
+  setTimeout(() => {
+    document.addEventListener('click', closeRowMenu, { once: true });
+    document.addEventListener('keydown', closeRowMenu, { once: true });
+  }, 0);
 }
 
 function baseHistory() {
