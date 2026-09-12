@@ -836,8 +836,8 @@ function termTheme() {
     foreground: '#1d2430',
     cursor: '#3455d1',
     cursorAccent: '#ffffff',
-    selectionBackground: '#cfdbf7',
-    selectionForeground: '#141821',
+    selectionBackground: '#3455d1',
+    selectionForeground: '#ffffff',
     black: '#24292e', red: '#c3312c', green: '#116b46', yellow: '#8a5b00',
     blue: '#3455d1', magenta: '#6f42c1', cyan: '#0b7285', white: '#eef0f4',
     brightBlack: '#57606a', brightRed: '#d9524c', brightGreen: '#1a8f5f',
@@ -880,6 +880,11 @@ async function openEmbeddedTmux(name) {
     theme: termTheme(),
   });
   rec.term = term;
+  try {
+    if (typeof CanvasAddon !== 'undefined') {
+      term.loadAddon(new CanvasAddon.CanvasAddon());
+    }
+  } catch { /* 忽略，回退 DOM 渲染 */ }
   try {
     term.open(rec.slot);
     dbg('xterm.open 成功');

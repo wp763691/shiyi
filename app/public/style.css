@@ -446,9 +446,9 @@ body[data-tab='config'] .brand-text p { display: block; }
   letter-spacing: 0.08em; pointer-events: none; user-select: none;
 }
 .term-slot .xterm { height: 100%; padding: 10px 14px; }
-.term-slot .xterm ::selection { background: rgba(52, 85, 209, 0.22); color: #141821; }
+.term-slot .xterm ::selection { background: #3455d1; color: #ffffff; }
 .xterm .xterm-selection div {
-  background-color: #cfdbf7 !important;
+  background-color: #3455d1 !important;
   opacity: 1 !important;
 }
 .term-status {
