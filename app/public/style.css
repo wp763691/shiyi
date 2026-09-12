@@ -431,8 +431,19 @@ body[data-tab='config'] .brand-text p { display: block; }
 .empty-new { margin-top: 16px; }
 .term-slot {
   flex: 1; min-width: 0; min-height: 0; display: none;
-  background: #f8f9fc; border: 1px solid #dfe3eb; border-radius: 8px;
+  border: 1px solid #dfe3eb; border-radius: 8px;
   overflow: hidden;
+  position: relative;
+  background:
+    repeating-linear-gradient(0deg, rgba(180, 195, 225, 0.10) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(90deg, rgba(180, 195, 225, 0.08) 0 1px, transparent 1px 24px),
+    linear-gradient(180deg, #fbfcff, #f4f7fd);
+}
+.term-slot::after {
+  content: "拾忆 · tmux 终端";
+  position: absolute; right: 14px; bottom: 10px;
+  font-size: 11px; color: rgba(120, 133, 160, 0.35);
+  letter-spacing: 0.08em; pointer-events: none; user-select: none;
 }
 .term-slot .xterm { height: 100%; padding: 2px; }
 .term-status {

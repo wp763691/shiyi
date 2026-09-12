@@ -832,7 +832,7 @@ function activateTerminal(name) {
 
 function termTheme() {
   return {
-    background: '#f8f9fc',
+    background: 'rgba(0,0,0,0)',
     foreground: '#1d2430',
     cursor: '#3455d1',
     cursorAccent: '#ffffff',
@@ -874,6 +874,7 @@ async function openEmbeddedTmux(name) {
     fontFamily: '"SF Mono", Menlo, Monaco, monospace',
     fontSize: 13,
     cursorBlink: true,
+    allowTransparency: true,
     theme: termTheme(),
   });
   rec.term = term;
@@ -1018,6 +1019,13 @@ function fitActiveTerminal() {
   try {
     rec.term.resize(cols, rows);
     STATUS_RIGHT.textContent = `${cols}×${rows} · ⌘L 列表 · ⌘1-9 切换标签`;
+  } catch { /* 忽略 */ }
+  try {
+    const slot = rec.slot.getBoundingClientRect();
+    const el = rec.term.element?.getBoundingClientRect();
+    const screen = rec.term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
+    const canvas = rec.term.element?.querySelector('canvas')?.getBoundingClientRect();
+    dbg(`终端几何 slot=${Math.round(slot.width)}x${Math.round(slot.height)} xtermEl=${el ? `${Math.round(el.width)}x${Math.round(el.height)}` : '-'} screen=${screen ? `${Math.round(screen.width)}x${Math.round(screen.height)}` : '-'} canvas=${canvas ? `${Math.round(canvas.width)}x${Math.round(canvas.height)}` : '-'} cols=${cols} rows=${rows}`);
   } catch { /* 忽略 */ }
   if (rec.id) {
     fetch('/api/terminal-input', {
