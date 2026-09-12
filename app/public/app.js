@@ -836,7 +836,7 @@ function termTheme() {
     foreground: '#1d2430',
     cursor: '#3455d1',
     cursorAccent: '#ffffff',
-    selectionBackground: 'rgba(52, 85, 209, 0.22)',
+    selectionBackground: '#cfdbf7',
     selectionForeground: '#141821',
     black: '#24292e', red: '#c3312c', green: '#116b46', yellow: '#8a5b00',
     blue: '#3455d1', magenta: '#6f42c1', cyan: '#0b7285', white: '#eef0f4',
