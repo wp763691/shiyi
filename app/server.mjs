@@ -324,8 +324,14 @@ const server = http.createServer(async (req, res) => {
           sendJson(res, 400, { ok: false, error: '权限参数不合法' });
           return;
         }
-        if (!name || !/^[\w.-]+$/.test(name)) {
-          sendJson(res, 400, { ok: false, error: '会话名只能含字母、数字、下划线、点或短横' });
+        // 支持中文等 Unicode：空格/标点归一为短横，去掉 tmux 不接受的字符
+        const safeName = name
+          .normalize('NFKC')
+          .replace(/[^\p{L}\p{N}_-]+/gu, '-')
+          .replace(/-{2,}/g, '-')
+          .replace(/^-+|-+$/g, '');
+        if (!safeName) {
+          sendJson(res, 400, { ok: false, error: '会话名不能为空' });
           return;
         }
         try {
@@ -335,8 +341,8 @@ const server = http.createServer(async (req, res) => {
             return;
           }
           const cmd = tool === 'bash' ? 'bash' : perm ? `${tool} ${perm}` : tool;
-          await execFileP('/opt/homebrew/bin/tmux', ['new-session', '-d', '-s', name, '-c', dir, cmd], { timeout: 6000 });
-          sendJson(res, 200, { ok: true, name, dir, tool });
+          await execFileP('/opt/homebrew/bin/tmux', ['new-session', '-d', '-s', safeName, '-c', dir, cmd], { timeout: 6000 });
+          sendJson(res, 200, { ok: true, name: safeName, dir, tool });
         } catch (e) {
           sendJson(res, 500, { ok: false, error: String(e?.message || e).slice(0, 200) });
         }

@@ -1051,9 +1051,10 @@ async function createNewSession() {
       return;
     }
     NEW_BACKDROP.hidden = true;
-    toast(`已创建 ${name}，正在打开…`);
+    const finalName = data.name || name;
+    toast(`已创建 ${finalName}，正在打开…`);
     await refresh();
-    openEmbeddedTmux(name);
+    openEmbeddedTmux(finalName);
   } catch (e) {
     toast(`创建失败：${e.message}`, true);
   } finally {
