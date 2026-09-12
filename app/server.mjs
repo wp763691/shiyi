@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
@@ -316,7 +316,8 @@ const server = http.createServer(async (req, res) => {
       }
       if (body.action === 'tmux-new') {
         const name = String(body.name || '').trim();
-        const dir = String(body.dir || '').trim();
+        let dir = String(body.dir || '').trim();
+        if (dir.length > 1 && dir.endsWith('/')) dir = dir.slice(0, -1);
         const tool = ['claude', 'codex', 'bash'].includes(body.tool) ? body.tool : 'bash';
         const perm = String(body.perm || '').trim();
         if (!/^[A-Za-z0-9 _-]*$/.test(perm) || perm.length > 80) {
@@ -328,6 +329,11 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try {
+          const st = await stat(dir);
+          if (!st.isDirectory()) {
+            sendJson(res, 400, { ok: false, error: '工作目录不是文件夹' });
+            return;
+          }
           const cmd = tool === 'bash' ? 'bash' : perm ? `${tool} ${perm}` : tool;
           await execFileP('/opt/homebrew/bin/tmux', ['new-session', '-d', '-s', name, '-c', dir, cmd], { timeout: 6000 });
           sendJson(res, 200, { ok: true, name, dir, tool });

@@ -1036,6 +1036,7 @@ async function createNewSession() {
   if (!dir) return toast('请选择工作目录', true);
   let name = NEW_NAME.value.trim();
   if (!name) name = `shiyi-${Date.now().toString(36)}`;
+  dbg(`创建会话 tool=${newTool} dir=${dir} name=${name} perm=${NEW_PERM.value}`);
   NEW_CREATE.disabled = true;
   try {
     const res = await fetch('/api/action', {
@@ -1044,6 +1045,7 @@ async function createNewSession() {
       body: JSON.stringify({ action: 'tmux-new', name, dir, tool: newTool, perm: NEW_PERM.value }),
     });
     const data = await res.json();
+    dbg(`创建返回 ${JSON.stringify(data).slice(0, 160)}`);
     if (!data.ok) {
       toast(`创建失败：${data.error || ''}`, true);
       return;
@@ -1069,6 +1071,7 @@ async function browseDir() {
     });
     const data = await res.json();
     if (data.ok && !data.canceled && data.dir) {
+      dbg(`浏览目录选中 ${data.dir}`);
       const existing = [...NEW_DIR.options].some((o) => o.value === data.dir);
       if (!existing) {
         const opt = document.createElement('option');

@@ -8,13 +8,13 @@ export async function listTmuxAgents() {
   try {
     const { stdout } = await execFileP('/opt/homebrew/bin/tmux', [
       'list-panes', '-a',
-      '-F', '#{session_name}|#{window_index}|#{pane_index}|#{pane_current_command}|#{pane_current_path}|#{session_attached}|#{pane_tty}',
+      '-F', '#{session_name}|#{window_index}|#{pane_index}|#{pane_current_command}|#{pane_current_path}|#{session_attached}|#{pane_tty}|#{pane_start_command}',
     ], { timeout: 5000 });
     const rows = [];
     for (const line of stdout.split('\n')) {
       if (!line.trim()) continue;
-      const [session, win, pane, command, cwd, attached, tty] = line.split('|');
-      const tool = classify(command);
+      const [session, win, pane, command, cwd, attached, tty, startCommand] = line.split('|');
+      const tool = classify(`${command} ${startCommand || ''}`);
       if (!tool) continue;
       rows.push({
         source: 'tmux',
