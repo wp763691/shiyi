@@ -35,7 +35,7 @@ async function resolveProviders() {
     const env = s.env || {};
     const token = env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY;
     const base = env.ANTHROPIC_BASE_URL;
-    const model = env.ANTHROPIC_MODEL || 'deepseek-v4-flash';
+    const model = env.ANTHROPIC_MODEL || 'deepseek-v4-pro';
     if (token && base) {
       out.push({ style: 'anthropic', url: base.replace(/\/$/, '') + '/v1/messages', model, key: token });
     }
@@ -122,41 +122,61 @@ export async function translateSkills(skills, { force = false } = {}) {
     return { ok: false, error: '未找到可用的模型端点（检查 ~/.codex 或 ~/.claude 配置）' };
   }
 
-  const payload = targets.map((s, i) => ({ i, name: s.name, description: s.description || '' }));
-  const prompt =
-    '你是技术文档翻译。把下面 JSON 数组中每个技能的 name 和 description 翻译成简洁、专业的简体中文。\n' +
-    '只输出 JSON 数组，元素格式 {"i":序号,"nameZh":"...","descZh":"..."}，不要输出任何其他文字。\n\n' +
-    JSON.stringify(payload, null, 0);
-
-  let text = '';
-  const errors = [];
-  for (const provider of providers) {
-    try {
-      text = await callModel(provider, prompt);
-      if (text) break;
-      errors.push(`${provider.style}: 空响应`);
-    } catch (e) {
-      errors.push(`${provider.style}: ${String(e?.message || e)}`);
-    }
-  }
-  if (!text) return { ok: false, error: errors.join(' | ') || '模型调用失败' };
-  const list = extractJson(text);
   let translated = 0;
-  for (const item of list) {
-    const src = targets[item.i];
-    if (!src) continue;
-    entries[src.path] = {
-      nameZh: String(item.nameZh || '').slice(0, 120),
-      descZh: String(item.descZh || '').slice(0, 400),
-      mtime: src.mtime,
-      size: src.bytes,
-      locked: false,
-      updatedAt: Date.now(),
-    };
-    translated += 1;
+  const errors = [];
+  const CHUNK = 12;
+  for (let start = 0; start < targets.length; start += CHUNK) {
+    const group = targets.slice(start, start + CHUNK);
+    const payload = group.map((s, i) => ({ i, description: s.description || '' }));
+    const prompt =
+      '你是资深技术翻译，负责把 AI 技能（Skill）的描述翻译成简体中文。\n' +
+      '要求：\n' +
+      '1. 忠实原意，不添加原文没有的信息，不做营销化改写；\n' +
+      '2. 技术名词、产品名、库名、缩写保持英文原样（如 p5.js、SVG、MCP、PR、HTML、API、Whisper）；\n' +
+      '3. 技能名称保持英文原样，不要翻译；\n' +
+      '4. descZh 用一句话说明"能力 + 适用场景"，控制在 80 字以内，去掉冗余修饰；\n' +
+      '5. 只输出 JSON 数组，元素格式 {"i":序号,"descZh":"..."}，不要任何多余文字。\n\n' +
+      JSON.stringify(payload, null, 0);
+
+    let text = '';
+    for (const provider of providers) {
+      try {
+        text = await callModel(provider, prompt);
+        if (text) break;
+      } catch (e) {
+        errors.push(`${provider.style}: ${String(e?.message || e)}`);
+      }
+    }
+    if (!text) continue;
+    let list;
+    try {
+      list = extractJson(text);
+    } catch (e) {
+      errors.push(String(e?.message || e));
+      continue;
+    }
+    for (const item of list) {
+      const src = group[item.i];
+      if (!src) continue;
+      entries[src.path] = {
+        nameZh: src.name,
+        descZh: String(item.descZh || '').slice(0, 400),
+        mtime: src.mtime,
+        size: src.bytes,
+        locked: false,
+        updatedAt: Date.now(),
+      };
+      translated += 1;
+    }
+    await saveTranslations(entries); // 分批落盘，避免中途失败全部丢失
   }
   await saveTranslations(entries);
-  return { ok: true, translated, total: skills.length };
+  return {
+    ok: translated > 0,
+    translated,
+    total: skills.length,
+    error: translated > 0 ? undefined : (errors.join(' | ') || '模型调用失败'),
+  };
 }
 
 export async function translationStats(skills) {

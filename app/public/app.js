@@ -478,12 +478,12 @@ function renderSkills() {
 
     const line1 = el('div', 'row-title');
     const tr = translationFor(s);
-    line1.textContent = showZh && tr?.nameZh ? tr.nameZh : s.name;
+    line1.textContent = s.name;
     const toolCls = s.tool === 'codex' ? 'tool-codex' : s.tool === 'agents' ? 'tool-agents' : 'tool-claude';
     const toolText = s.tool === 'agents' ? '本地' : s.toolLabel;
     line1.append(el('span', `tag ${toolCls}`, toolText));
     line1.append(el('span', `tag scope-${s.scope}`, s.scope === 'project' ? '项目' : '全局'));
-    if (showZh && !tr) line1.append(el('span', 'tag', '未译'));
+    if (showZh && !tr) line1.append(el('span', 'tag', '描述未译'));
     main.appendChild(line1);
 
     const descText = showZh && tr?.descZh ? tr.descZh : s.description;
@@ -505,6 +505,12 @@ function renderSkills() {
     transBtn.title = '修正中文译文（保存后锁定）';
     transBtn.onclick = () => openTransEditor(s, tr);
     actions.appendChild(transBtn);
+    if (tr) {
+      const reBtn = el('button', 'btn small', '重译');
+      reBtn.title = '用当前模型重新翻译该技能';
+      reBtn.onclick = () => retranslateSkill(s, reBtn);
+      actions.appendChild(reBtn);
+    }
     const folderBtn = el('button', 'btn small', '文件夹');
     folderBtn.onclick = () => act({ action: 'open', reveal: true, path: s.folder });
     const editBtn = el('button', 'btn small', '编辑');
@@ -1214,7 +1220,8 @@ async function browseDir() {
 function openTransEditor(skill, tr) {
   transCurrent = skill;
   TRANS_TITLE.textContent = `修正译文 · ${skill.name}`;
-  TRANS_NAME.value = tr?.nameZh || '';
+  TRANS_NAME.value = skill.name;
+  TRANS_NAME.disabled = true;
   TRANS_DESC.value = tr?.descZh || '';
   TRANS_BACKDROP.hidden = false;
   TRANS_NAME.focus();
@@ -1230,7 +1237,7 @@ async function saveTransEditor() {
       body: JSON.stringify({
         action: 'set-skill-translation',
         path: transCurrent.path,
-        nameZh: TRANS_NAME.value.trim(),
+        nameZh: transCurrent.name,
         descZh: TRANS_DESC.value.trim(),
       }),
     });
@@ -1268,6 +1275,28 @@ async function translateMissingSkills() {
   } finally {
     SKILL_TRANSLATE.textContent = old;
     SKILL_TRANSLATE.disabled = false;
+  }
+}
+
+async function retranslateSkill(skill, btn) {
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '译…';
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'translate-skill', path: skill.path, force: true }),
+    });
+    const data = await res.json();
+    if (!data.ok) toast(`重译失败：${data.error || ''}`, true);
+    else toast('已重新翻译');
+    await refresh();
+  } catch (e) {
+    toast(`重译失败：${e.message}`, true);
+  } finally {
+    btn.textContent = old;
+    btn.disabled = false;
   }
 }
 

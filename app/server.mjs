@@ -418,6 +418,21 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      if (body.action === 'translate-skill') {
+        try {
+          const skills = await scanSkills(await projectDirsForTranslate());
+          const target = skills.find((s) => s.path === body.path);
+          if (!target) {
+            sendJson(res, 404, { ok: false, error: '找不到该技能' });
+            return;
+          }
+          const out = await translateSkills([target], { force: true });
+          sendJson(res, out.ok ? 200 : 500, out);
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
       sendJson(res, 400, { ok: false, error: '未知动作' });
       return;
     }
