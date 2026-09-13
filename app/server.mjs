@@ -21,6 +21,7 @@ import {
 import { listTmuxAgents } from './lib/tmux.mjs';
 import { scanConfigFiles, readConfigFile, saveConfigFile } from './lib/configfiles.mjs';
 import { loadTranslations, translateSkills, setManualTranslation, translationStats } from './lib/translations.mjs';
+import { loadSessionNames, setSessionName } from './lib/names.mjs';
 import {
   openTmuxTerminal,
   writeTerminalInput,
@@ -176,6 +177,7 @@ async function buildState() {
     configFiles,
     skillTranslations: await loadTranslations(),
     translationStats: await translationStats(skills),
+    sessionNames: await loadSessionNames(),
     errors,
     now: Date.now(),
   };
@@ -428,6 +430,15 @@ const server = http.createServer(async (req, res) => {
           }
           const out = await translateSkills([target], { force: true });
           sendJson(res, out.ok ? 200 : 500, out);
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+      if (body.action === 'set-session-name') {
+        try {
+          const out = await setSessionName(body.key, body.name);
+          sendJson(res, 200, out);
         } catch (e) {
           sendJson(res, 500, { ok: false, error: String(e?.message || e) });
         }

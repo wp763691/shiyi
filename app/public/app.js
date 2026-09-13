@@ -12,6 +12,11 @@ const TRANS_NAME = document.getElementById('transName');
 const TRANS_DESC = document.getElementById('transDesc');
 const TRANS_CANCEL = document.getElementById('transCancel');
 const TRANS_SAVE = document.getElementById('transSave');
+const RENAME_BACKDROP = document.getElementById('renameBackdrop');
+const RENAME_INPUT = document.getElementById('renameInput');
+const RENAME_CANCEL = document.getElementById('renameCancel');
+const RENAME_SAVE = document.getElementById('renameSave');
+let renameKey = null;
 let showZh = true;
 let transCurrent = null;
 const TAB_SESSIONS = document.getElementById('tab-sessions');
@@ -122,6 +127,7 @@ let state = {
   rules: [], mcp: [], agents: [], commands: [], hooks: [],
   configFiles: [],
   skillTranslations: {}, translationStats: { total: 0, translated: 0 },
+  sessionNames: {},
   errors: [], now: Date.now(),
 };
 let lastError = null;
@@ -157,6 +163,8 @@ function fmtDate(ts) {
 }
 
 function liveTitle(w) {
+  const custom = customName(liveRenameKeys(w));
+  if (custom) return custom;
   if (w.session?.title && w.session.title !== '未命名会话') return w.session.title;
   if (w.title) return w.title;
   if (w.tool === 'bash') return 'Bash 会话';
@@ -223,6 +231,25 @@ function liveKey(w) {
   return `pid:${w.procPid || w.tty || w.name || ''}`;
 }
 
+function sessionKeyFor(tool, sessionId) {
+  return sessionId ? `session:${tool}:${sessionId}` : null;
+}
+
+function customName(keys, fallback) {
+  for (const k of keys) {
+    if (k && state.sessionNames && state.sessionNames[k]) return state.sessionNames[k];
+  }
+  return fallback;
+}
+
+function liveRenameKeys(w) {
+  const keys = [];
+  if (w.session) keys.push(sessionKeyFor(w.session.tool, w.session.sessionId));
+  if (w.tmux) keys.push(`tmux:${w.sessionName}`);
+  if (w.win) keys.push(`win:${w.win}:${w.tab}`);
+  return keys.filter(Boolean);
+}
+
 function liveSortTs(w) {
   return w.createdMs || w.session?.lastTs || 0;
 }
@@ -242,6 +269,39 @@ function togglePin(w) {
   else pins[key] = Date.now();
   try { localStorage.setItem('shiyi.pins', JSON.stringify(pins)); } catch { /* 忽略 */ }
   renderLive();
+}
+
+function openRenameDialog(key, current) {
+  if (!key) return toast('该会话暂不支持重命名', true);
+  renameKey = key;
+  RENAME_INPUT.value = current || '';
+  RENAME_BACKDROP.hidden = false;
+  RENAME_INPUT.focus();
+  RENAME_INPUT.select();
+}
+
+async function saveRenameDialog() {
+  if (!renameKey) return;
+  RENAME_SAVE.disabled = true;
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set-session-name', key: renameKey, name: RENAME_INPUT.value }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`重命名失败：${data.error || ''}`, true);
+      return;
+    }
+    RENAME_BACKDROP.hidden = true;
+    toast(data.name ? '已重命名' : '已恢复默认标题');
+    await refresh();
+  } catch (e) {
+    toast(`重命名失败：${e.message}`, true);
+  } finally {
+    RENAME_SAVE.disabled = false;
+  }
 }
 
 function renderLive() {
@@ -340,6 +400,7 @@ function showRowMenu(anchor, w) {
   } else if (w.win) {
     item('聚焦窗口', () => act({ action: 'focus', win: w.win, tab: w.tab }));
   }
+  item('重命名', () => openRenameDialog(liveRenameKeys(w)[0], liveTitle(w)));
   item('终止会话', () => terminateRow(w), true);
   document.body.appendChild(menu);
   const r = anchor.getBoundingClientRect();
@@ -390,7 +451,7 @@ function renderHistory() {
     const main = el('div', 'row-main');
 
     const line1 = el('div', 'row-title');
-    line1.textContent = s.title;
+    line1.textContent = customName([sessionKeyFor(s.tool, s.sessionId)], s.title);
     const chip = toolChip(s);
     if (chip) line1.append(el('span', chip[0], chip[1]));
     if (s.branch) line1.append(el('span', 'tag branch', s.branch));
@@ -422,6 +483,11 @@ function renderHistory() {
         .catch(() => toast('复制失败，请手动复制'));
     };
     const del = el('button', 'btn danger small', '删除');
+    const renameBtn = el('button', 'btn small', '改名');
+    renameBtn.onclick = () => openRenameDialog(
+      sessionKeyFor(s.tool, s.sessionId),
+      customName([sessionKeyFor(s.tool, s.sessionId)], s.title)
+    );
     del.onclick = () => {
       const where = s.tool === 'codex' ? '~/.codex/trash-zyin' : '~/.claude/trash-zyin';
       showConfirm(
@@ -432,7 +498,7 @@ function renderHistory() {
         }
       );
     };
-    actions.append(resume, copy, del);
+    actions.append(resume, copy, renameBtn, del);
     row.appendChild(actions);
     HIST.appendChild(row);
   }
@@ -1543,6 +1609,9 @@ SKILL_LANG_TOGGLE.addEventListener('click', () => {
 });
 TRANS_CANCEL.addEventListener('click', () => { TRANS_BACKDROP.hidden = true; });
 TRANS_SAVE.addEventListener('click', saveTransEditor);
+RENAME_CANCEL.addEventListener('click', () => { RENAME_BACKDROP.hidden = true; });
+RENAME_SAVE.addEventListener('click', saveRenameDialog);
+RENAME_INPUT.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveRenameDialog(); } });
 document.getElementById('drawerNew').addEventListener('click', openNewSession);
 document.getElementById('emptyNew').addEventListener('click', openNewSession);
 DIR_BROWSE.addEventListener('click', browseDir);
