@@ -539,35 +539,47 @@ function renderHistory() {
     row.appendChild(main);
 
     const actions = el('div', 'row-actions');
-    const resume = el('button', 'btn primary', '恢复会话');
+    const resume = el('button', 'btn primary small', '恢复');
     resume.onclick = () => act({ action: 'resume', sessionId: s.sessionId, cwd: s.cwd, tool: s.tool });
-    const copy = el('button', 'btn ghost small', '复制命令');
-    copy.onclick = () => {
-      const bin = s.tool === 'codex' ? 'codex' : 'claude';
-      const cmd = s.cwd
-        ? `cd '${s.cwd}' && ${bin} ${s.tool === 'codex' ? 'resume' : '--resume'} ${s.sessionId}`
-        : `${bin} ${s.tool === 'codex' ? 'resume' : '--resume'} ${s.sessionId}`;
-      navigator.clipboard?.writeText(cmd)
-        .then(() => toast('已复制：' + cmd))
-        .catch(() => toast('复制失败，请手动复制'));
-    };
-    const del = el('button', 'btn danger small', '删除');
-    const renameBtn = el('button', 'btn small', '改名');
-    renameBtn.onclick = () => openRenameDialog(
-      sessionKeyFor(s.tool, s.sessionId),
-      customName([sessionKeyFor(s.tool, s.sessionId)], s.title)
-    );
-    del.onclick = () => {
-      const where = s.tool === 'codex' ? '~/.codex/trash-zyin' : '~/.claude/trash-zyin';
-      showConfirm(
-        `删除会话「${s.title}」？`,
-        `会话文件会移到 ${where}（可手动找回），并从面板和恢复列表移除。此操作不可在面板内撤销。`,
-        async () => {
-          await act({ action: 'delete', tool: s.tool, sessionId: s.sessionId, path: s.path });
-        }
-      );
-    };
-    actions.append(resume, copy, renameBtn, del);
+    const more = el('button', 'btn small more-btn', '⋯');
+    more.title = '更多操作';
+    more.onclick = (e) => showSimpleMenu(e.currentTarget, [
+      {
+        label: '复制恢复命令',
+        fn: () => {
+          const bin = s.tool === 'codex' ? 'codex' : 'claude';
+          const cmd = s.cwd
+            ? `cd '${s.cwd}' && ${bin} ${s.tool === 'codex' ? 'resume' : '--resume'} ${s.sessionId}`
+            : `${bin} ${s.tool === 'codex' ? 'resume' : '--resume'} ${s.sessionId}`;
+          navigator.clipboard?.writeText(cmd)
+            .then(() => toast('已复制：' + cmd))
+            .catch(() => toast('复制失败，请手动复制'));
+        },
+      },
+      {
+        label: '重命名（显示别名）',
+        fn: () => openRenameDialog(
+          sessionKeyFor(s.tool, s.sessionId),
+          customName([sessionKeyFor(s.tool, s.sessionId)], s.title)
+        ),
+      },
+      { sep: true },
+      {
+        label: '删除会话',
+        danger: true,
+        fn: () => {
+          const where = s.tool === 'codex' ? '~/.codex/trash-zyin' : '~/.claude/trash-zyin';
+          showConfirm(
+            `删除会话「${s.title}」？`,
+            `会话文件会移到 ${where}（可手动找回），并从面板和恢复列表移除。此操作不可在面板内撤销。`,
+            async () => {
+              await act({ action: 'delete', tool: s.tool, sessionId: s.sessionId, path: s.path });
+            }
+          );
+        },
+      },
+    ]);
+    actions.append(resume, more);
     row.appendChild(actions);
     row.ondblclick = (e) => {
       if (e.target.closest('button')) return;
