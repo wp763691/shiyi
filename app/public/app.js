@@ -1453,6 +1453,36 @@ async function openEmbeddedTmux(name) {
     ev.preventDefault();
     rec.term.scrollLines(Math.sign(ev.deltaY) * 3);
   }, { passive: false });
+  // 拖入文件/文本：自动插入路径（含空格时加引号）
+  rec.slot.addEventListener('dragover', (ev) => {
+    ev.preventDefault();
+    try { ev.dataTransfer.dropEffect = 'copy'; } catch { /* 忽略 */ }
+  });
+  rec.slot.addEventListener('drop', (ev) => {
+    ev.preventDefault();
+    const dt = ev.dataTransfer;
+    if (!dt) return;
+    let text = '';
+    try {
+      const uri = dt.getData('text/uri-list');
+      if (uri) {
+        text = uri.split(/\r?\n/)
+          .filter((l) => l && !l.startsWith('#'))
+          .map((l) => decodeURIComponent(l.replace(/^file:\/\//, '')))
+          .join(' ');
+      }
+    } catch { /* 忽略 */ }
+    if (!text) {
+      try { text = dt.getData('text/plain') || ''; } catch { text = ''; }
+    }
+    if (text.startsWith('file://')) text = decodeURIComponent(text.replace(/^file:\/\//, ''));
+    if (!text && dt.files && dt.files.length) text = Array.from(dt.files).map((f) => f.name).join(' ');
+    if (!text) return;
+    const escaped = /[ \t]/.test(text) ? `'${text.replace(/'/g, `'\\''`)}'` : text;
+    queueRecInput(rec, escaped);
+    flushRecInput(rec);
+    try { rec.term.scrollToBottom(); } catch { /* 忽略 */ }
+  });
   fitActiveTerminal();
 
   try {
