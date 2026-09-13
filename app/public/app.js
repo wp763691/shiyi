@@ -44,6 +44,14 @@ const MODAL_COMMAND = document.getElementById('modalCommand');
 const MODAL_COPY = document.getElementById('modalCopy');
 const MODAL_OK = document.getElementById('modalOk');
 const MODAL_CLOSE = document.getElementById('modalClose');
+const CTX_BACKDROP = document.getElementById('ctxBackdrop');
+const CTX_TITLE = document.getElementById('ctxTitle');
+const CTX_TEXT = document.getElementById('ctxText');
+const CTX_DETAIL = document.getElementById('ctxDetail');
+const CTX_HINT = document.getElementById('ctxHint');
+const CTX_COMPACT = document.getElementById('ctxCompact');
+const CTX_HANDOFF = document.getElementById('ctxHandoff');
+const CTX_LATER = document.getElementById('ctxLater');
 const RAIL_TOGGLE = document.getElementById('railToggle');
 const WB_DRAWER = document.getElementById('wbDrawer');
 const DRAWER_RESIZER = document.getElementById('drawerResizer');
@@ -264,18 +272,22 @@ function sessionMetaById(sessionId) {
   return (state.sessions || []).find((s) => s.sessionId === sessionId) || null;
 }
 
-function ctxBadge(meta) {
+function ctxBadge(meta, onOpen) {
   if (!meta || !meta.ctxTokens || !meta.ctxMax) return null;
   const pct = Math.min(999, Math.round((meta.ctxTokens / meta.ctxMax) * 100));
   const level = ctxLevel(meta);
   const cls = level === 'danger' ? 'chip ctx ctx-danger' : level === 'warn' ? 'chip ctx ctx-warn' : 'chip ctx';
-  const chip = el('span', cls, `上下文 ${pct}%`);
+  const chip = el('span', `${cls}${onOpen ? ' clickable' : ''}`, `上下文 ${pct}%`);
   const d = meta.ctxDetail || {};
   chip.title = [
     `${meta.ctxTokens.toLocaleString()} / ${meta.ctxMax.toLocaleString()} tokens`,
     `输入 ${(d.input || 0).toLocaleString()} · 缓存读 ${(d.cacheRead || 0).toLocaleString()}${d.cacheCreate ? ` · 缓存写 ${d.cacheCreate.toLocaleString()}` : ''}`,
     `输出 ${(d.output || 0).toLocaleString()}${meta.model ? ` · 模型 ${meta.model}` : ''}`,
+    onOpen ? '点击可查看交接与压缩选项' : '',
   ].join('\n');
+  if (onOpen) {
+    chip.onclick = (e) => { e.stopPropagation(); onOpen(); };
+  }
   return chip;
 }
 
@@ -286,18 +298,20 @@ function ctxLevel(meta) {
 }
 
 const ctxWarned = new Map();
-function checkCtxWarnings(runningMetas) {
-  for (const meta of runningMetas) {
+const ctxSuppressed = new Set();
+function checkCtxWarnings(entries) {
+  for (const { w, meta } of entries) {
     if (!meta?.ctxTokens || !meta?.ctxMax) continue;
     const pct = Math.round((meta.ctxTokens / meta.ctxMax) * 100);
     const level = pct >= 90 ? 2 : pct >= 80 ? 1 : 0;
     const prev = ctxWarned.get(meta.sessionId) || 0;
     if (level > prev) {
       ctxWarned.set(meta.sessionId, level);
-      toast(
-        `「${meta.title}」上下文已用 ${pct}%（${Math.round(meta.ctxTokens / 1000)}k / ${Math.round(meta.ctxMax / 1000)}k），建议 /compact 或开新会话`,
-        level === 2
-      );
+      if (level === 1) {
+        toast(`「${meta.title}」上下文已用 ${pct}%（${Math.round(meta.ctxTokens / 1000)}k / ${Math.round(meta.ctxMax / 1000)}k），接近上限`);
+      } else if (!ctxSuppressed.has(meta.sessionId) && CTX_BACKDROP.hidden) {
+        openCtxDialog(meta, w);
+      }
     } else if (level < prev) {
       ctxWarned.set(meta.sessionId, level);
     }
@@ -429,7 +443,7 @@ function renderLive() {
     if (w.tmux) line1.append(el('span', 'tag tmux-tag', 'tmux'));
     const chip = toolChip(w);
     if (chip) line1.append(el('span', chip[0], chip[1]));
-    const ctxChip = ctxBadge(rowMeta);
+    const ctxChip = ctxBadge(rowMeta, () => openCtxDialog(rowMeta, w));
     if (ctxChip) line1.append(ctxChip);
     main.appendChild(line1);
 
@@ -466,7 +480,7 @@ function renderLive() {
     actions.appendChild(more);
     row.appendChild(actions);
     row.ondblclick = (e) => {
-      if (e.target.closest('button')) return;
+      if (e.target.closest('button, .chip.ctx')) return;
       openRunningItem(w);
     };
     row.title = `双击打开（${getOpenMode() === 'embedded' ? '内置终端' : 'iTerm'}）`;
@@ -1732,6 +1746,7 @@ async function createNewSession() {
     NEW_BACKDROP.hidden = true;
     const finalName = data.name || name;
     try { localStorage.setItem('shiyi.lastDir', dir); } catch { /* 忽略 */ }
+    try { localStorage.setItem(`shiyi.lastPerm.${newTool}`, NEW_PERM.value || ''); } catch { /* 忽略 */ }
     toast(`已创建 ${finalName}，正在打开…`);
     await refresh();
     openEmbeddedTmux(finalName);
@@ -2048,6 +2063,125 @@ function hideModal() {
   MODAL_BACKDROP.hidden = true;
 }
 
+// ---------- 上下文快满：交接对话框 ----------
+let ctxTarget = null;
+
+function lastPermFor(tool) {
+  try { return localStorage.getItem(`shiyi.lastPerm.${tool}`) || ''; } catch { return ''; }
+}
+
+function openCtxDialog(meta, w) {
+  if (!meta?.ctxTokens || !meta?.ctxMax) return;
+  ctxTarget = { meta, w: w || null };
+  const pct = Math.min(999, Math.round((meta.ctxTokens / meta.ctxMax) * 100));
+  const d = meta.ctxDetail || {};
+  const toolLabel = meta.tool === 'codex' ? 'Codex' : 'Claude Code';
+  CTX_TITLE.textContent = `上下文已用 ${pct}% · ${meta.title || '当前会话'}`;
+  CTX_TEXT.textContent =
+    `这个会话已经装了 ${meta.ctxTokens.toLocaleString()} / ${meta.ctxMax.toLocaleString()} tokens。\n` +
+    '继续聊下去，越早的内容越容易被挤出去，模型可能"忘掉"前面说过的话。先做一次交接，再决定要不要留在当前会话。';
+  CTX_DETAIL.textContent = [
+    `输入 ${(d.input || 0).toLocaleString()} · 缓存读 ${(d.cacheRead || 0).toLocaleString()}` +
+      (d.cacheCreate ? ` · 缓存写 ${d.cacheCreate.toLocaleString()}` : ''),
+    `输出 ${(d.output || 0).toLocaleString()}${meta.model ? ` · 模型 ${meta.model}` : ''}`,
+    meta.cwd ? `目录 ${meta.cwd}` : '',
+  ].filter(Boolean).join('\n');
+  const canInject = Boolean(w?.tmux && w?.sessionName);
+  CTX_COMPACT.textContent = canInject ? '压缩上下文（/compact）' : '复制 /compact 命令';
+  CTX_HINT.textContent = canInject
+    ? `压缩：在「${w.sessionName}」里执行 /compact，摘要保留、原始对话被压缩。\n`
+      + `开新会话：在 ${meta.cwd || '同一目录'} 新开一个 ${toolLabel}，让它先读这份记录再继续。\n`
+      + '关掉本窗口后，这个会话不再自动弹出（徽标变红仍然可见）。'
+    : `当前会话不在 tmux 里，无法直接注入命令，将改为复制 /compact 让你手动粘贴。\n`
+      + `开新会话：在 ${meta.cwd || '同一目录'} 新开一个 ${toolLabel}，让它先读这份记录再继续。\n`
+      + '关掉本窗口后，这个会话不再自动弹出（徽标变红仍然可见）。';
+  CTX_COMPACT.onclick = () => { ctxCompact(); };
+  CTX_HANDOFF.onclick = () => { ctxHandoff(); };
+  CTX_LATER.onclick = () => { hideCtxDialog(); };
+  CTX_BACKDROP.hidden = false;
+}
+
+function hideCtxDialog() {
+  const sid = ctxTarget?.meta?.sessionId;
+  if (sid) ctxSuppressed.add(sid);
+  ctxTarget = null;
+  CTX_BACKDROP.hidden = true;
+}
+
+async function ctxCompact() {
+  const t = ctxTarget;
+  if (!t) return;
+  const { meta, w } = t;
+  if (!(w?.tmux && w?.sessionName)) {
+    try {
+      await navigator.clipboard?.writeText('/compact');
+      toast('已复制 /compact，切到该会话粘贴回车即可');
+    } catch {
+      toast('复制失败，请手动输入 /compact', true);
+    }
+    hideCtxDialog();
+    return;
+  }
+  CTX_COMPACT.disabled = true;
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'tmux-send', name: w.sessionName, text: '/compact' }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`发送失败：${data.error || ''}`, true);
+      return;
+    }
+    hideCtxDialog();
+    toast(`已在「${w.sessionName}」中执行 /compact`);
+    if (drawerOpen) handleEmbeddedOpen(w.sessionName);
+  } catch (e) {
+    toast(`发送失败：${e.message}`, true);
+  } finally {
+    CTX_COMPACT.disabled = false;
+  }
+}
+
+async function ctxHandoff() {
+  const t = ctxTarget;
+  if (!t) return;
+  const { meta, w } = t;
+  const tool = meta.tool === 'codex' ? 'codex' : 'claude';
+  const dir = meta.cwd || state.homeDir || '';
+  const baseName = w?.sessionName || meta.title || tool;
+  CTX_HANDOFF.disabled = true;
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'handoff-session',
+        tool,
+        dir,
+        name: baseName,
+        title: meta.title || baseName,
+        transcript: meta.path || '',
+        perm: lastPermFor(tool),
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`新建失败：${data.error || ''}`, true);
+      return;
+    }
+    hideCtxDialog();
+    toast(`已新建「${data.name}」，正在读取上一个会话生成交接摘要…`);
+    await refresh();
+    handleEmbeddedOpen(data.name);
+  } catch (e) {
+    toast(`新建失败：${e.message}`, true);
+  } finally {
+    CTX_HANDOFF.disabled = false;
+  }
+}
+
 let toastTimer;
 function toast(msg, isError = false) {
   TOAST.textContent = msg;
@@ -2076,10 +2210,11 @@ async function refresh() {
   renderSkills();
   renderConfig();
   renderTermTabs();
-  checkCtxWarnings([
-    ...(state.windows || []).map((w) => sessionMetaById(w.session?.sessionId)),
-    ...(state.tmuxSessions || []).map((t) => sessionMetaById(t.session?.sessionId)),
-  ].filter(Boolean));
+  checkCtxWarnings(
+    liveAll()
+      .map((w) => ({ w, meta: sessionMetaById(w.session?.sessionId) }))
+      .filter((e) => e.meta)
+  );
   const runningCount = liveAll().length;
   const histCount = baseHistory().length;
   TAB_SESS_COUNT.textContent = String(runningCount + histCount);

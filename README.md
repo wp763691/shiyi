@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/github/license/wp763691/shiyi)
 ![macOS](https://img.shields.io/badge/macOS-12%2B-blue)
 ![Platform](https://img.shields.io/badge/Apple%20Silicon-supported-green)
-[![Download](https://img.shields.io/badge/下载-v1.0.7-blue)](https://github.com/wp763691/shiyi/releases/latest)
+[![Download](https://img.shields.io/badge/下载-v1.0.8-blue)](https://github.com/wp763691/shiyi/releases/latest)
 
 ## 截图
 
@@ -32,6 +32,7 @@
 ## 功能概览
 
 - **会话**：运行窗口 / tmux 实时映射、历史检索、一键恢复（iTerm → Terminal.app → 复制命令三级降级）、新建 / 终止会话
+- **上下文管理**：真实 usage 徽标（80% 提示 / 90% 自动弹窗），可就地 `/compact` 或"开新会话 + 交接摘要"
 - **内置终端**：基于 tmux + 系统 Python PTY 桥的终端工作台，多标签、自适应、清屏、复制粘贴
 - **技能**：全局 / 项目两级浏览，搜索、编辑、删除到回收
 - **配置**：规则 / MCP（含连通性检测）/ Agent / 命令 / Hooks / 配置文件编辑器（JSON/TOML 语法高亮 + 自动备份）
@@ -56,6 +57,7 @@ Shiyi/
 │   │   ├── Info.plist            # 应用元数据与网络策略
 │   │   ├── build_app.sh          # 一键打包 .app
 │   │   ├── make_icon.swift       # 图标绘制脚本（生成 1024 PNG）
+│   │   ├── make_icon.sh          # 一键生成 AppIcon.icns + public/brand.png（配色：sunrise/mint/sky）
 │   │   ├── AppIcon.icns          # 应用图标（构建时打入）
 │   │   └── .build/               # 构建产物目录（不入库）
 │   ├── path-aliases.example.json # 路径别名示例（目录改名时用）

@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, writeFile, mkdtemp } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
@@ -61,6 +61,35 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 const execFileP = promisify(execFile);
+
+// 单引号包裹的 shell 字面量（用于生成临时启动脚本）
+function shq(s) {
+  return `'${String(s).replace(/'/g, `'\\''`)}'`;
+}
+
+// 生成"交接摘要"提示词：让新会话先读旧 transcript，再输出交接摘要
+function buildHandoffPrompt({ tool, title, dir, transcript }) {
+  const lines = [
+    '我们接着上一个会话继续工作。你是一个刚接手的新会话，请先建立上下文，再等我的指令。',
+    '',
+    '【上一个会话】',
+    `- 名称：${title || '（未命名）'}`,
+    `- 工具：${tool === 'codex' ? 'Codex' : 'Claude Code'}`,
+    `- 工作目录：${dir || '（未知）'}`,
+  ];
+  if (transcript) lines.push(`- 完整对话记录：${transcript}`);
+  lines.push(
+    '',
+    '【请先做这件事】',
+    transcript
+      ? '1. 读取上面的对话记录文件（JSONL，每行一条消息）。如果文件很大，先看行数，再只读开头约 80 行与结尾约 400 行，不必通读全文。'
+      : '1. 先看当前工作目录的现状（git status、最近改动、关键文件）。',
+    '2. 用简洁的中文写一份交接摘要，不超过 15 行，包含：原本的目标 / 已完成的事与关键决定 / 还没做完或待确认的事项 / 建议的下一步。',
+    '3. 输出摘要后停下来等我确认，不要自己开始大改动。',
+    ''
+  );
+  return lines.join('\n');
+}
 
 function sendJson(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -582,6 +611,94 @@ const server = http.createServer(async (req, res) => {
           sendJson(res, 200, { ok: true });
         } catch (e) {
           sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+      if (body.action === 'tmux-send') {
+        try {
+          const name = normalizeSessionName(body.name || '');
+          const text = String(body.text || '').replace(/[\r\n]+/g, ' ').trim();
+          if (!name || !text) {
+            sendJson(res, 400, { ok: false, error: '缺少会话名或要发送的内容' });
+            return;
+          }
+          const tmux = await tmuxBin();
+          if (!tmux) {
+            sendJson(res, 400, { ok: false, error: '未安装 tmux，请先运行：brew install tmux' });
+            return;
+          }
+          await execFileP(tmux, ['send-keys', '-t', name, '-l', text], { timeout: 6000 });
+          if (body.submit !== false) {
+            await new Promise((r) => setTimeout(r, 150));
+            await execFileP(tmux, ['send-keys', '-t', name, 'Enter'], { timeout: 6000 });
+          }
+          sendJson(res, 200, { ok: true, name });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e).slice(0, 200) });
+        }
+        return;
+      }
+      if (body.action === 'handoff-session') {
+        try {
+          const tool = body.tool === 'codex' ? 'codex' : 'claude';
+          let dir = String(body.dir || '').trim();
+          if (dir.length > 1 && dir.endsWith('/')) dir = dir.slice(0, -1);
+          const st = dir ? await stat(dir).catch(() => null) : null;
+          if (!st || !st.isDirectory()) dir = os.homedir();
+          const perm = String(body.perm || '').trim();
+          if (!/^[A-Za-z0-9 _-]*$/.test(perm) || perm.length > 80) {
+            sendJson(res, 400, { ok: false, error: '权限参数不合法' });
+            return;
+          }
+          const tmux = await tmuxBin();
+          if (!tmux) {
+            sendJson(res, 400, { ok: false, error: '未安装 tmux，请先运行：brew install tmux' });
+            return;
+          }
+          try {
+            await execFileP('/bin/bash', ['-lc', `command -v ${tool}`], { timeout: 5000 });
+          } catch {
+            sendJson(res, 400, {
+              ok: false,
+              error: tool === 'claude'
+                ? '未检测到 Claude Code CLI，请先运行：npm install -g @anthropic-ai/claude-code'
+                : '未检测到 Codex CLI，请先运行：npm install -g @openai/codex',
+            });
+            return;
+          }
+          const title = String(body.title || '').slice(0, 120);
+          const transcript = String(body.transcript || '').slice(0, 400);
+          const prompt = buildHandoffPrompt({ tool, title, dir, transcript });
+          // 多行提示词放进临时启动脚本，避免 tmux 命令解析的引号问题
+          const work = await mkdtemp(path.join(os.tmpdir(), 'shiyi-handoff-'));
+          const promptFile = path.join(work, 'prompt.txt');
+          const launcher = path.join(work, 'launch.sh');
+          await writeFile(promptFile, prompt, { mode: 0o600 });
+          await writeFile(
+            launcher,
+            [
+              '#!/bin/bash',
+              `cd -- ${shq(dir)} || exit 1`,
+              `exec ${tool}${perm ? ` ${perm}` : ''} "$(cat ${shq(promptFile)})"`,
+              '',
+            ].join('\n'),
+            { mode: 0o700 }
+          );
+          const base = normalizeSessionName(`${String(body.name || '').replace(/-?续$/, '')}-续`) || `${tool}-续`;
+          let name = base;
+          for (let i = 2; i < 30; i += 1) {
+            try {
+              await execFileP(tmux, ['has-session', '-t', name], { timeout: 4000 });
+              name = `${base}-${i}`;
+            } catch {
+              break;
+            }
+          }
+          await execFileP(tmux, ['new-session', '-d', '-s', name, '-c', dir, `/bin/bash ${launcher}`], { timeout: 8000 });
+          await ensureTmuxScrollOptions(name);
+          sendJson(res, 200, { ok: true, name, dir, tool });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e).slice(0, 200) });
         }
         return;
       }
