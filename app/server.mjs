@@ -305,21 +305,41 @@ function demoState() {
         sessionId: 'demo-session-0001', tool: 'claude', title: '项目架构重构讨论', cwd: '/Users/demo/code/awesome-app',
         branch: 'main', lastTs: now - 3 * 60000, lastUserText: '先把 auth 模块的依赖梳理一遍', exchanges: 32,
         dirName: '…/code/awesome-app', mb: 0.6,
+        ctxTokens: 62400, ctxMax: 200000, model: 'claude-sonnet-4-5',
+        ctxDetail: { input: 41000, cacheRead: 18400, cacheCreate: 2000, output: 1000 },
       },
       {
         sessionId: 'demo-session-0002', tool: 'codex', title: '修 CI 缓存问题', cwd: '/Users/demo/code/awesome-app',
         branch: 'feat/ci', lastTs: now - 2 * 3600000, lastUserText: '看看 GitHub Actions 的缓存 key', exchanges: 18,
         dirName: '…/code/awesome-app', mb: 0.3,
+        ctxTokens: 96000, ctxMax: 400000, model: 'gpt-5-codex',
+        ctxDetail: { input: 71000, cacheRead: 24000, cacheCreate: 0, output: 1000 },
       },
       {
         sessionId: 'demo-session-0003', tool: 'claude', title: 'API 文档整理', cwd: '/Users/demo/code/docs-site',
         branch: 'main', lastTs: now - 26 * 3600000, lastUserText: '把新增的接口补进文档', exchanges: 9,
         dirName: '…/code/docs-site', mb: 0.2,
+        ctxTokens: 41000, ctxMax: 200000, model: 'claude-sonnet-4-5',
+        ctxDetail: { input: 30000, cacheRead: 9800, cacheCreate: 0, output: 1200 },
+      },
+      {
+        sessionId: 'demo-session-0004', tool: 'claude', title: '拾忆 · 内置终端联调', cwd: '/Users/demo/code/awesome-app',
+        branch: 'main', lastTs: now - 40000, lastUserText: '终端里再跑一遍拖放插入路径', exchanges: 47,
+        dirName: '…/code/awesome-app', mb: 1.1,
+        ctxTokens: 168400, ctxMax: 200000, model: 'claude-sonnet-4-5',
+        ctxDetail: { input: 121000, cacheRead: 44800, cacheCreate: 1600, output: 1000 },
       },
     ],
     windows: [],
     tmuxSessions: [
-      { source: 'tmux', name: 'shiyi-demo', window: '0', pane: '0', tool: 'claude', command: 'claude', cwd: '/Users/demo/code/awesome-app', attached: false, tty: 'ttys010' },
+      {
+        source: 'tmux', name: 'shiyi-demo', window: '0', pane: '0', tool: 'claude', command: 'claude',
+        cwd: '/Users/demo/code/awesome-app', attached: false, tty: 'ttys010', memMB: 486,
+        session: {
+          sessionId: 'demo-session-0004', tool: 'claude', title: '拾忆 · 内置终端联调',
+          lastTs: now - 40000, cwd: '/Users/demo/code/awesome-app',
+        },
+      },
     ],
     skills: [
       { name: 'code-reviewer', description: '按行业惯例审查 Pull Request 的风险与测试覆盖。', tool: 'claude', toolLabel: 'Claude Code', scope: 'global', folder: '/Users/demo/.claude/skills/code-reviewer', mtime: now - 86400000 },
@@ -330,7 +350,18 @@ function demoState() {
       { name: 'test-planner', description: '为改动梳理测试矩阵与边界用例。', tool: 'claude', toolLabel: 'Claude Code', scope: 'global', folder: '/Users/demo/.claude/skills/test-planner', mtime: now - 14400000 },
       { name: 'sql-optimizer', description: '分析慢查询并给出索引与改写建议。', tool: 'codex', toolLabel: 'Codex', scope: 'global', folder: '/Users/demo/.codex/skills/sql-optimizer', mtime: now - 18000000 },
       { name: 'ui-review', description: '从可用性与一致性角度评审界面改动。', tool: 'claude', toolLabel: 'Claude Code', scope: 'project', project: '/Users/demo/code/awesome-app', projectName: '…/code/awesome-app', folder: '/Users/demo/code/awesome-app/.claude/skills/ui-review', mtime: now - 21600000 },
-    ],
+    ].map((s) => ({ ...s, path: s.path || s.folder })),
+    // 演示用翻译缓存（技能库截图里显示"译"与中文说明）
+    skillTranslations: {
+      '/Users/demo/.claude/skills/code-reviewer': { nameZh: '代码审查', descZh: '按行业惯例审查 Pull Request 的风险与测试覆盖。', locked: true, updatedAt: now },
+      '/Users/demo/.codex/skills/doc-writer': { nameZh: '文档撰写', descZh: '把代码变更整理成清晰的中英文技术文档。', locked: true, updatedAt: now },
+      '/Users/demo/code/awesome-app/.claude/skills/architect-mentor': { nameZh: '架构导师', descZh: '项目级架构评审与改进建议。', locked: true, updatedAt: now },
+      '/Users/demo/.claude/skills/release-notes': { nameZh: '发布说明', descZh: '根据提交记录生成面向用户的发布说明。', locked: true, updatedAt: now },
+      '/Users/demo/.codex/skills/api-designer': { nameZh: '接口设计', descZh: '设计 REST / GraphQL 接口并输出 OpenAPI 草案。', locked: true, updatedAt: now },
+      '/Users/demo/.claude/skills/test-planner': { nameZh: '测试规划', descZh: '为改动梳理测试矩阵与边界用例。', locked: true, updatedAt: now },
+      '/Users/demo/.codex/skills/sql-optimizer': { nameZh: 'SQL 优化', descZh: '分析慢查询并给出索引与改写建议。', locked: true, updatedAt: now },
+    },
+    translationStats: { total: 8, translated: 7 },
     rules: [
       { kind: 'rule', name: 'CLAUDE.md', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/CLAUDE.md', lines: 42, mtime: now - 3600000, preview: '团队规范：默认英文注释，提交信息遵循 Conventional Commits…' },
       { kind: 'rule', name: 'AGENTS.md', tool: 'codex', scope: 'global', path: '/Users/demo/.codex/AGENTS.md', lines: 20, mtime: now - 7200000, preview: 'Codex 通用守则…' },
