@@ -13,7 +13,7 @@ const cache = new Map(); // filePath -> { mtimeMs, size, data }
 
 // 模型上下文窗口映射（Claude 兼容端点不返回窗口大小；可用 ~/.shiyi/model-windows.json 覆盖）
 const DEFAULT_WINDOWS = [
-  { re: /deepseek/i, window: 128000 },
+  { re: /deepseek/i, window: 1000000 },
   { re: /claude.*(opus|sonnet|haiku)/i, window: 200000 },
   { re: /gpt-5|o4|o3/i, window: 400000 },
 ];
@@ -400,7 +400,8 @@ async function parseCodexFile(fp, s, titles) {
       if (last && typeof last === 'object') {
         const input = last.input_tokens || 0;
         const cacheRead = last.cached_input_tokens || last.cache_read_input_tokens || 0;
-        const ctx = input + cacheRead;
+        // input_tokens 已包含缓存命中部分，不能重复相加
+        const ctx = input || (cacheRead + (last.uncached_input_tokens || 0));
         if (ctx > 0) {
           meta.ctxTokens = ctx;
           meta.ctxDetail = { input, cacheRead, output: last.output_tokens || 0 };
