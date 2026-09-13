@@ -445,6 +445,8 @@ function showRowMenu(anchor, w) {
   } else if (w.win) {
     item('聚焦窗口', () => act({ action: 'focus', win: w.win, tab: w.tab }));
   }
+  const cwd = w.session?.cwd || w.cwd;
+  if (cwd) item('打开会话目录', () => act({ action: 'open', reveal: true, path: cwd }));
   item('重命名', () => openRenameDialog(liveRenameKeys(w)[0], liveTitle(w)));
   item('终止会话', () => terminateRow(w), true);
   document.body.appendChild(menu);
@@ -563,6 +565,10 @@ function renderHistory() {
           customName([sessionKeyFor(s.tool, s.sessionId)], s.title)
         ),
       },
+      ...(s.cwd ? [{
+        label: '打开项目目录',
+        fn: () => act({ action: 'open', reveal: true, path: s.cwd }),
+      }] : []),
       { sep: true },
       {
         label: '删除会话',
@@ -991,6 +997,14 @@ function renderTermTabs() {
       e.stopPropagation();
       openRenameDialog(`tmux:${rec.name}`, customName([`tmux:${rec.name}`], rec.name), 'alias');
     };
+    btn.oncontextmenu = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const items = [];
+      if (rec.cwd) items.push({ label: '打开会话目录', fn: () => act({ action: 'open', reveal: true, path: rec.cwd }) });
+      items.push({ label: '设置显示别名', fn: () => openRenameDialog(`tmux:${rec.name}`, customName([`tmux:${rec.name}`], rec.name), 'alias') });
+      showSimpleMenu(btn, items);
+    };
     TERM_TABS.insertBefore(btn, hint);
   }
   const info = [];
@@ -1059,7 +1073,10 @@ async function openEmbeddedTmux(name) {
     reader: null,
     slot: null,
     term: null,
+    cwd: '',
   };
+  const meta = (state.tmuxSessions || []).find((t) => t.name === name);
+  rec.cwd = meta?.cwd || meta?.session?.cwd || '';
   rec.slot = document.createElement('div');
   rec.slot.className = 'term-slot';
   rec.slot.style.display = 'block';
