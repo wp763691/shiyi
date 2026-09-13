@@ -388,6 +388,17 @@ function renderLive() {
     more.onclick = (e) => showRowMenu(e.currentTarget, w);
     actions.appendChild(more);
     row.appendChild(actions);
+    row.ondblclick = (e) => {
+      if (e.target.closest('button')) return;
+      if (w.tmux) { handleEmbeddedOpen(w.sessionName); return; }
+      if (w.win) { act({ action: 'focus', win: w.win, tab: w.tab }); return; }
+      if (w.session?.sessionId) {
+        act({ action: 'resume', sessionId: w.session.sessionId, cwd: w.session.cwd, tool: w.session.tool });
+      } else {
+        toast('该会话无法打开内置终端，可用 ⋯ 菜单操作', true);
+      }
+    };
+    row.title = w.tmux ? '双击在内置终端打开' : '双击聚焦窗口';
     LIVE.appendChild(row);
   }
 }
@@ -553,6 +564,11 @@ function renderHistory() {
     };
     actions.append(resume, copy, renameBtn, del);
     row.appendChild(actions);
+    row.ondblclick = (e) => {
+      if (e.target.closest('button')) return;
+      act({ action: 'resume', sessionId: s.sessionId, cwd: s.cwd, tool: s.tool });
+    };
+    row.title = '双击恢复该会话（iTerm / Terminal）';
     HIST.appendChild(row);
   }
 }
