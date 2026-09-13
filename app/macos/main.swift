@@ -1,12 +1,40 @@
 import Cocoa
 import WebKit
 
+/// 支持从 Finder 拖入文件并拿到完整路径（WKWebView 的 JS 层只能拿到文件名）
+final class DropWebView: WKWebView {
+  var onDropPaths: (([String]) -> Void)?
+
+  override init(frame: CGRect, configuration: WKWebViewConfiguration) {
+    super.init(frame: frame, configuration: configuration)
+    registerForDraggedTypes([.fileURL])
+  }
+
+  required init?(coder: NSCoder) {
+    super.init(coder: coder)
+    registerForDraggedTypes([.fileURL])
+  }
+
+  override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+    return .copy
+  }
+
+  override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+    let pb = sender.draggingPasteboard
+    let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+    guard let urls = pb.readObjects(forClasses: [NSURL.self], options: options) as? [URL],
+          !urls.isEmpty else { return false }
+    onDropPaths?(urls.map { $0.path })
+    return true
+  }
+}
+
 // 拾忆 - macOS 本地应用封装
 // 启动时自动拉起内嵌的 Node 服务（server.mjs），并用原生 WebView 打开面板
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
   private var window: NSWindow!
-  private var webView: WKWebView!
+  private var webView: DropWebView!
   private var server: Process?
   private var logHandle: FileHandle?
   private var pollCount = 0
@@ -91,7 +119,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     window.center()
 
     let config = WKWebViewConfiguration()
-    webView = WKWebView(frame: rect, configuration: config)
+    webView = DropWebView(frame: rect, configuration: config)
+    webView.onDropPaths = { [weak self] paths in
+      guard let self = self, let data = try? JSONSerialization.data(withJSONObject: paths),
+            let json = String(data: data, encoding: .utf8) else { return }
+      self.webView.evaluateJavaScript("window.__shiyiInsertPaths && window.__shiyiInsertPaths(\(json))")
+    }
     webView.navigationDelegate = self
 
     let placeholder = NSTextField(labelWithString: "正在启动本地服务…")

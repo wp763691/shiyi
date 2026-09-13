@@ -1208,6 +1208,18 @@ function activeRec() {
   return termSessions.find((r) => r.name === activeTermName) || null;
 }
 
+// 由 Swift 原生层拖放回调调用：插入完整路径（含空格自动加引号）
+window.__shiyiInsertPaths = (paths) => {
+  const rec = activeRec();
+  if (!rec || !Array.isArray(paths) || !paths.length) return;
+  const text = paths
+    .map((p) => (/[ \t]/.test(p) ? `'${String(p).replace(/'/g, `'\\''`)}'` : p))
+    .join(' ');
+  queueRecInput(rec, text);
+  flushRecInput(rec);
+  try { rec.term.scrollToBottom(); } catch { /* 忽略 */ }
+};
+
 function updateTermStatus() {
   const rec = activeRec();
   if (rec) {
@@ -1463,8 +1475,11 @@ async function openEmbeddedTmux(name) {
     const dt = ev.dataTransfer;
     if (!dt) return;
     let text = '';
+    let uriRaw = '';
+    let plainRaw = '';
     try {
       const uri = dt.getData('text/uri-list');
+      uriRaw = uri || '';
       if (uri) {
         text = uri.split(/\r?\n/)
           .filter((l) => l && !l.startsWith('#'))
@@ -1473,8 +1488,9 @@ async function openEmbeddedTmux(name) {
       }
     } catch { /* 忽略 */ }
     if (!text) {
-      try { text = dt.getData('text/plain') || ''; } catch { text = ''; }
+      try { text = dt.getData('text/plain') || ''; plainRaw = text; } catch { text = ''; }
     }
+    dbg(`drop uri=${uriRaw.slice(0, 160)} plain=${plainRaw.slice(0, 160)} files=${Array.from(dt.files || []).map((f) => f.name).join(',')} final=${text.slice(0, 160)}`);
     if (text.startsWith('file://')) text = decodeURIComponent(text.replace(/^file:\/\//, ''));
     if (!text && dt.files && dt.files.length) text = Array.from(dt.files).map((f) => f.name).join(' ');
     if (!text) return;
