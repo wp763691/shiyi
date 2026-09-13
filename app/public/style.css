@@ -328,13 +328,14 @@ body[data-tab='config'] .brand-text p { display: block; }
 .drawer-actions { display: inline-flex; gap: 6px; }
 .btn.primary-ghost { color: var(--accent); border-color: rgba(52, 85, 209, 0.35); background: var(--accent-soft); }
 .btn.primary-ghost:hover { background: rgba(52, 85, 209, 0.14); }
-.mini-panel { display: flex; flex-direction: column; min-height: 0; flex: 1 1 0; }
-.mini-panel.collapsed { flex: 0 0 auto; }
+.mini-panel { display: flex; flex-direction: column; min-height: 0; flex: 0 0 auto; max-height: 42%; }
+.wb-drawer .mini-panel + .mini-panel { flex: 1 1 auto; max-height: none; }
+.mini-panel.collapsed { flex: 0 0 auto; max-height: none; }
 .mini-panel.collapsed .rows.compact { display: none; }
 .mini-panel + .mini-panel { border-top: 1px solid var(--line-soft); }
 .mini-head {
   display: flex; align-items: center; gap: 8px;
-  padding: 12px 14px 6px;
+  padding: 10px 14px 5px;
   cursor: pointer; user-select: none;
 }
 .mini-head:hover { background: #f7f8fb; }
