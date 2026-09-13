@@ -18,7 +18,7 @@ import {
   trashRuleFile,
   checkMcp,
 } from './lib/registry.mjs';
-import { listTmuxAgents } from './lib/tmux.mjs';
+import { listTmuxAgents, normalizeSessionName, renameTmuxSession } from './lib/tmux.mjs';
 import { scanConfigFiles, readConfigFile, saveConfigFile } from './lib/configfiles.mjs';
 import {
   loadTranslations,
@@ -381,11 +381,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         // 支持中文等 Unicode：空格/标点归一为短横，去掉 tmux 不接受的字符
-        const safeName = name
-          .normalize('NFKC')
-          .replace(/[^\p{L}\p{N}_-]+/gu, '-')
-          .replace(/-{2,}/g, '-')
-          .replace(/^-+|-+$/g, '');
+        const safeName = normalizeSessionName(name);
         if (!safeName) {
           sendJson(res, 400, { ok: false, error: '会话名不能为空' });
           return;
@@ -475,6 +471,15 @@ const server = http.createServer(async (req, res) => {
       if (body.action === 'clear-skill-translations') {
         try {
           sendJson(res, 200, await clearTranslations());
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+      if (body.action === 'tmux-rename') {
+        try {
+          const out = await renameTmuxSession(body.from, body.to);
+          sendJson(res, 200, out);
         } catch (e) {
           sendJson(res, 500, { ok: false, error: String(e?.message || e) });
         }

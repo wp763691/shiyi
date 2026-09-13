@@ -270,9 +270,9 @@ function togglePin(w) {
   renderLive();
 }
 
-function openRenameDialog(key, current) {
-  if (!key) return toast('该会话暂不支持重命名', true);
-  renameKey = key;
+function openRenameDialog(key, current, mode = 'alias') {
+  if (mode === 'alias' && !key) return toast('该会话暂不支持重命名', true);
+  renameKey = { mode, key, from: mode === 'tmux' ? current : null };
   RENAME_INPUT.value = current || '';
   RENAME_BACKDROP.hidden = false;
   RENAME_INPUT.focus();
@@ -283,10 +283,43 @@ async function saveRenameDialog() {
   if (!renameKey) return;
   RENAME_SAVE.disabled = true;
   try {
+    if (renameKey.mode === 'tmux') {
+      const from = renameKey.from;
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'tmux-rename', from, to: RENAME_INPUT.value }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        toast(`重命名失败：${data.error || ''}`, true);
+        return;
+      }
+      const rec = termSessions.find((r) => r.name === from);
+      if (rec) rec.name = data.name;
+      if (activeTermName === from) activeTermName = data.name;
+      if (state.sessionNames[`tmux:${from}`]) {
+        await fetch('/api/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set-session-name', key: `tmux:${data.name}`, name: state.sessionNames[`tmux:${from}`] }),
+        });
+        await fetch('/api/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set-session-name', key: `tmux:${from}`, name: '' }),
+        });
+      }
+      RENAME_BACKDROP.hidden = true;
+      toast(`tmux 会话已改名为 ${data.name}`);
+      renderTermTabs();
+      await refresh();
+      return;
+    }
     const res = await fetch('/api/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'set-session-name', key: renameKey, name: RENAME_INPUT.value }),
+      body: JSON.stringify({ action: 'set-session-name', key: renameKey.key, name: RENAME_INPUT.value }),
     });
     const data = await res.json();
     if (!data.ok) {
@@ -914,13 +947,17 @@ function renderTermTabs() {
     const dot = document.createElement('i');
     dot.className = rec.alive ? 'tdot on' : 'tdot';
     const label = document.createElement('span');
-    label.textContent = rec.name;
+    label.textContent = customName([`tmux:${rec.name}`], rec.name);
     const close = document.createElement('b');
     close.textContent = '×';
     close.title = '关闭视图（tmux 仍在后台）';
     close.onclick = (e) => { e.stopPropagation(); closeTermTab(rec.name); };
     btn.append(dot, label, close);
     btn.onclick = () => activateTerminal(rec.name);
+    btn.ondblclick = (e) => {
+      e.stopPropagation();
+      openRenameDialog(`tmux:${rec.name}`, customName([`tmux:${rec.name}`], rec.name), 'alias');
+    };
     TERM_TABS.insertBefore(btn, hint);
   }
   const info = [];

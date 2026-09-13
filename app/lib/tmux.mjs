@@ -2,6 +2,23 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execFileP = promisify(execFile);
+const TMUX = '/opt/homebrew/bin/tmux';
+
+// 规范化会话名：支持中文等 Unicode，空格/标点转短横
+export function normalizeSessionName(name) {
+  return String(name || '')
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N}_-]+/gu, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export async function renameTmuxSession(fromName, toName) {
+  const clean = normalizeSessionName(toName);
+  if (!clean) throw new Error('会话名不能为空');
+  await execFileP(TMUX, ['rename-session', '-t', fromName, clean], { timeout: 6000 });
+  return { ok: true, name: clean };
+}
 
 // 列出 tmux 里正在运行的 claude / codex 会话
 export async function listTmuxAgents() {
