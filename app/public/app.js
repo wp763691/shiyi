@@ -1299,6 +1299,7 @@ async function openEmbeddedTmux(name) {
     fontFamily: '"SF Mono", Menlo, Monaco, monospace',
     fontSize: 13,
     cursorBlink: true,
+    scrollback: 5000,
     macOptionClickForcesSelection: true,
     theme: termTheme(),
   });
@@ -1331,6 +1332,11 @@ async function openEmbeddedTmux(name) {
       if (e.type !== 'keydown') return true;
       // 输入法组合过程中交给 xterm 正常处理
       if (e.isComposing || e.keyCode === 229) return true;
+      // Shift+PageUp/PageDown 滚动本地缓冲（不会被 TUI 抢占）
+      if (e.shiftKey && (e.key === 'PageUp' || e.key === 'PageDown')) {
+        rec.term.scrollPages(e.key === 'PageUp' ? -1 : 1);
+        return false;
+      }
       if (e.type === 'keydown' && (e.metaKey || e.ctrlKey) && !e.altKey) {
         const k = e.key.toLowerCase();
         if (k === 'c') {
@@ -1358,6 +1364,12 @@ async function openEmbeddedTmux(name) {
       return true;
     });
   } catch { /* 兼容旧版忽略 */ }
+  // Shift + 滚轮：强制滚动终端本地缓冲（绕过 TUI 的鼠标接管）
+  rec.slot.addEventListener('wheel', (ev) => {
+    if (!ev.shiftKey) return;
+    ev.preventDefault();
+    rec.term.scrollLines(Math.sign(ev.deltaY) * 3);
+  }, { passive: false });
   fitActiveTerminal();
 
   try {
