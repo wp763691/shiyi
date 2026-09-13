@@ -1412,6 +1412,21 @@ async function openEmbeddedTmux(name) {
   try {
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
+      // Shift + 标点：按 US 键位直接映射发送，绕过输入法"组合→提交"的两段式
+      const SHIFT_MAP = {
+        Digit1: '!', Digit2: '@', Digit3: '#', Digit4: '$', Digit5: '%',
+        Digit6: '^', Digit7: '&', Digit8: '*', Digit9: '(', Digit0: ')',
+        Minus: '_', Equal: '+', BracketLeft: '{', BracketRight: '}',
+        Backslash: '|', Semicolon: ':', Quote: '"', Comma: '<', Period: '>', Slash: '?',
+        Backquote: '~',
+      };
+      if (e.shiftKey && !e.metaKey && !e.ctrlKey && SHIFT_MAP[e.code]) {
+        e.preventDefault();
+        queueRecInput(rec, SHIFT_MAP[e.code]);
+        flushRecInput(rec);
+        try { rec.term.scrollToBottom(); } catch { /* 忽略 */ }
+        return false;
+      }
       // 输入法组合过程中交给 xterm 正常处理
       if (e.isComposing || e.keyCode === 229) return true;
       // Shift+PageUp/PageDown 滚动本地缓冲（不会被 TUI 抢占）
