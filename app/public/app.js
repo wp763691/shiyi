@@ -1409,45 +1409,15 @@ async function openEmbeddedTmux(name) {
   dbg('activateTerminal 完成');
   STATUS_LEFT.textContent = `打开 ${name}：标签已就绪，正在 attach…`;
   term.onData((d) => {
-    // 去重：手动直通的字符若在极短时间内又被 xterm/输入法送出一次，丢弃后者
-    const g = rec.manualGuard;
-    if (g && d === g.ch && performance.now() - g.ts < 160) {
-      rec.manualGuard = null;
-      return;
-    }
     queueRecInput(rec, d);
   });
-  // 中文输入法会在 keydown 之后"提交"一次同样的字符：在 beforeinput 阶段拦掉
+  // 文本统一由全局的 input/compositionend 处理器接管（见文件末尾）
   try {
-    const ta = rec.term.textarea;
-    ta?.addEventListener('beforeinput', (ev) => {
-      const g = rec.manualGuard;
-      if (g && typeof ev.data === 'string' && ev.data === g.ch && performance.now() - g.ts < 160) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        rec.manualGuard = null;
-      }
-    }, true);
+    if (rec.term.textarea) rec.term.textarea.__rec = rec;
   } catch { /* 忽略 */ }
   try {
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
-      // Shift + 标点：按 US 键位直接映射发送，绕过输入法"组合→提交"的两段式
-      const SHIFT_MAP = {
-        Digit1: '!', Digit2: '@', Digit3: '#', Digit4: '$', Digit5: '%',
-        Digit6: '^', Digit7: '&', Digit8: '*', Digit9: '(', Digit0: ')',
-        Minus: '_', Equal: '+', BracketLeft: '{', BracketRight: '}',
-        Backslash: '|', Semicolon: ':', Quote: '"', Comma: '<', Period: '>', Slash: '?',
-        Backquote: '~',
-      };
-      if (e.shiftKey && !e.metaKey && !e.ctrlKey && SHIFT_MAP[e.code]) {
-        e.preventDefault();
-        rec.manualGuard = { ch: SHIFT_MAP[e.code], ts: performance.now() };
-        queueRecInput(rec, SHIFT_MAP[e.code]);
-        flushRecInput(rec);
-        try { rec.term.scrollToBottom(); } catch { /* 忽略 */ }
-        return false;
-      }
       // 输入法组合过程中交给 xterm 正常处理
       if (e.isComposing || e.keyCode === 229) return true;
       // Shift+PageUp/PageDown 滚动本地缓冲（不会被 TUI 抢占）
@@ -1473,17 +1443,6 @@ async function openEmbeddedTmux(name) {
           }).catch(() => {});
           return false;
         }
-      }
-      // 所有可打印字符直通（涵盖 ! @ # $ % ^ & * ( ) _ + { } | : " < > ? ~ 等，
-      // 以及 Shift/Option 组合产生的字符），规避 WKWebView 下的键位映射丢失
-      if (!e.metaKey && !e.ctrlKey && typeof e.key === 'string' && [...e.key].length === 1) {
-        // 必须阻止默认行为，否则字符会被写进 xterm 隐藏输入框，造成重复输入
-        e.preventDefault();
-        rec.manualGuard = { ch: e.key, ts: performance.now() };
-        queueRecInput(rec, e.key);
-        flushRecInput(rec);          // 立即发送，避免"按一下没反应"
-        try { rec.term.scrollToBottom(); } catch { /* 忽略 */ }
-        return false;
       }
       return true;
     });
@@ -2184,6 +2143,27 @@ SKILL_MORE.addEventListener('click', (e) => {
   ]);
 });
 FOCUS_TOGGLE.addEventListener('click', () => setFocusMode(!focusMode));
+// 终端文本统一通道：输入法提交与普通输入都从这里走，避免与 xterm 重复发送
+function sendComposedText(rec, data, ev) {
+  if (data) {
+    queueRecInput(rec, data);
+    flushRecInput(rec);
+    try { rec.term.scrollToBottom(); } catch { /* 忽略 */ }
+  }
+  try { ev.target.value = ''; } catch { /* 忽略 */ }
+  ev.preventDefault();
+  ev.stopImmediatePropagation();
+}
+document.addEventListener('input', (ev) => {
+  const rec = ev.target && ev.target.__rec;
+  if (!rec || ev.isComposing) return;
+  sendComposedText(rec, ev.data, ev);
+}, true);
+document.addEventListener('compositionend', (ev) => {
+  const rec = ev.target && ev.target.__rec;
+  if (!rec) return;
+  sendComposedText(rec, ev.data, ev);
+}, true);
 document.addEventListener('mousemove', (e) => {
   if (!focusMode) return;
   if (e.clientY < 8) document.body.classList.add('top-hover');
