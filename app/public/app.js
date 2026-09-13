@@ -1411,12 +1411,24 @@ async function openEmbeddedTmux(name) {
   term.onData((d) => {
     // 去重：手动直通的字符若在极短时间内又被 xterm/输入法送出一次，丢弃后者
     const g = rec.manualGuard;
-    if (g && d === g.ch && performance.now() - g.ts < 90) {
+    if (g && d === g.ch && performance.now() - g.ts < 160) {
       rec.manualGuard = null;
       return;
     }
     queueRecInput(rec, d);
   });
+  // 中文输入法会在 keydown 之后"提交"一次同样的字符：在 beforeinput 阶段拦掉
+  try {
+    const ta = rec.term.textarea;
+    ta?.addEventListener('beforeinput', (ev) => {
+      const g = rec.manualGuard;
+      if (g && typeof ev.data === 'string' && ev.data === g.ch && performance.now() - g.ts < 160) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        rec.manualGuard = null;
+      }
+    }, true);
+  } catch { /* 忽略 */ }
   try {
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
