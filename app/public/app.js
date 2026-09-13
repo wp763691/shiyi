@@ -1306,8 +1306,10 @@ function updateDrawerLayout() {
 }
 
 function openNewSession() {
-  const dirs = [...new Set((state.sessions || []).map((s) => s.cwd).filter(Boolean))];
-  if (!dirs.includes('/Users/wp/Desktop/llm/Shiyi')) dirs.unshift('/Users/wp/Desktop/llm/Shiyi');
+  const home = state.homeDir || '';
+  let last = '';
+  try { last = localStorage.getItem('shiyi.lastDir') || ''; } catch { /* 忽略 */ }
+  const dirs = [...new Set([home, last, ...(state.sessions || []).map((s) => s.cwd)].filter(Boolean))];
   NEW_DIR.innerHTML = '';
   for (const d of dirs.slice(0, 60)) {
     const opt = document.createElement('option');
@@ -1315,6 +1317,7 @@ function openNewSession() {
     opt.textContent = d;
     NEW_DIR.appendChild(opt);
   }
+  NEW_DIR.value = last || home || dirs[0] || '';
   NEW_NAME.value = '';
   updatePermSelect();
   NEW_BACKDROP.hidden = false;
@@ -1365,6 +1368,7 @@ async function createNewSession() {
     }
     NEW_BACKDROP.hidden = true;
     const finalName = data.name || name;
+    try { localStorage.setItem('shiyi.lastDir', dir); } catch { /* 忽略 */ }
     toast(`已创建 ${finalName}，正在打开…`);
     await refresh();
     openEmbeddedTmux(finalName);

@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/github/license/wp763691/shiyi)
 ![macOS](https://img.shields.io/badge/macOS-12%2B-blue)
 ![Platform](https://img.shields.io/badge/Apple%20Silicon-supported-green)
-[![Download](https://img.shields.io/badge/下载-v1.0.2-blue)](https://github.com/wp763691/shiyi/releases/latest)
+[![Download](https://img.shields.io/badge/下载-v1.0.3-blue)](https://github.com/wp763691/shiyi/releases/latest)
 
 ## 截图
 

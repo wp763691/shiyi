@@ -194,6 +194,7 @@ async function buildState() {
     skillTranslations: await loadTranslations(),
     translationStats: await translationStats(skills),
     sessionNames: await loadSessionNames(),
+    homeDir: os.homedir(),
     errors,
     now: Date.now(),
   };
@@ -268,6 +269,7 @@ function demoState() {
       { tool: 'codex', label: 'Codex config', path: '/Users/demo/.codex/config.toml', exists: true, bytes: 860, mtime: now - 3600000, scope: 'global' },
     ],
     errors: [],
+    homeDir: os.homedir(),
     now,
   };
 }
