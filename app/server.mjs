@@ -181,9 +181,21 @@ async function buildState() {
     commands,
     hooks,
     tmuxSessions: (tmuxAgents.items || []).map((t) => {
-      const proc = (procsRes.procs || []).find(
-        (p) => normalizeTty(p.tty) === normalizeTty(t.tty)
+      const procs = procsRes.procs || [];
+      const parentOf = new Map(procs.map((p) => [p.pid, p.ppid]));
+      const isDescendant = (pid, ancestor) => {
+        let cur = pid;
+        for (let i = 0; i < 8 && cur; i += 1) {
+          if (cur === ancestor) return true;
+          cur = parentOf.get(cur);
+        }
+        return false;
+      };
+      const candidates = procs.filter(
+        (p) => normalizeTty(p.tty) === normalizeTty(t.tty) ||
+          (t.panePid && isDescendant(p.pid, t.panePid))
       );
+      const proc = candidates.find((p) => p.sessionId || p.sessionFile) || candidates[0];
       const s = activeForProc(proc, t.tool);
       return {
         ...t,

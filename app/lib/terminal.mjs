@@ -73,18 +73,18 @@ end tell`;
 
 export async function runningClaudeProcs() {
   try {
-    const { stdout } = await execFileP('/bin/ps', ['-axo', 'pid=,tty=,etime=,command='], {
+    const { stdout } = await execFileP('/bin/ps', ['-axo', 'pid=,ppid=,tty=,etime=,command='], {
       timeout: 6000,
       maxBuffer: 8 * 1024 * 1024,
     });
     const procs = [];
     for (const line of stdout.split('\n')) {
       // 只关心有终端（TTY）的交互式 CLI 会话；桌面应用/更新器/扩展宿主都是 '??'
-      const m = line.match(/^\s*(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/);
-      if (!m || m[2] === '??') continue;
-      const tool = classifyAgent(m[4]);
+      const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/);
+      if (!m || m[3] === '??') continue;
+      const tool = classifyAgent(m[5]);
       if (!tool) continue;
-      const p = { pid: Number(m[1]), tty: m[2], etime: m[3], command: m[4], tool, cwd: '' };
+      const p = { pid: Number(m[1]), ppid: Number(m[2]), tty: m[3], etime: m[4], command: m[5], tool, cwd: '' };
       try {
         const out = await execFileP('/usr/sbin/lsof', ['-a', '-p', String(p.pid), '-d', 'cwd', '-Fn'], { timeout: 4000 });
         const mm = out.stdout.match(/\nn(.*)/);
