@@ -1237,6 +1237,11 @@ async function openEmbeddedTmux(name) {
   term.onData((d) => queueRecInput(rec, d));
   try {
     term.attachCustomKeyEventHandler((e) => {
+      // 显式处理问号：部分键盘布局下 xterm 在 WKWebView 中会丢失 Shift+/ 的映射
+      if (e.type === 'keydown' && (e.key === '?' || e.key === '？')) {
+        queueRecInput(rec, e.key);
+        return false;
+      }
       if (e.type === 'keydown' && (e.metaKey || e.ctrlKey) && !e.altKey) {
         const k = e.key.toLowerCase();
         if (k === 'c') {
