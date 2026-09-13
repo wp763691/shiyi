@@ -54,6 +54,7 @@ const TERM_EMPTY = document.getElementById('termEmpty');
 const STATUS_LEFT = document.getElementById('statusLeft');
 const STATUS_RIGHT = document.getElementById('statusRight');
 const TERM_CLEAR = document.getElementById('termClear');
+const TERM_HISTORY = document.getElementById('termHistory');
 const FOCUS_TOGGLE = document.getElementById('focusToggle');
 const MEM_TOTAL = document.getElementById('memTotal');
 const IDLE_RELEASE = document.getElementById('idleRelease');
@@ -1143,10 +1144,22 @@ function updateTermStatus() {
   if (rec) {
     STATUS_LEFT.textContent = `tmux · ${rec.name} · ${rec.alive ? '已连接' : '已断开（后台仍运行）'}`;
     TERM_CLEAR.hidden = false;
+    TERM_HISTORY.hidden = false;
   } else {
     STATUS_LEFT.textContent = '就绪';
     TERM_CLEAR.hidden = true;
+    TERM_HISTORY.hidden = true;
   }
+}
+
+function enterHistoryMode() {
+  const rec = activeRec();
+  if (!rec || !rec.id) return;
+  // 发送 tmux 前缀 Ctrl-b 再按 [ 进入 copy-mode，可滚轮/方向键翻历史
+  rec.buf = (rec.buf || '') + '\u0002[';
+  flushRecInput(rec);
+  toast('已进入历史浏览：滚轮或方向键翻看，按 q 返回输入');
+  rec.term.focus();
 }
 
 function clearActiveTerm() {
@@ -2027,6 +2040,7 @@ DRAWER_RESIZER.addEventListener('pointerdown', (e) => {
 });
 TERM_NEW.addEventListener('click', openNewSession);
 TERM_CLEAR.addEventListener('click', clearActiveTerm);
+TERM_HISTORY.addEventListener('click', enterHistoryMode);
 SKILL_MORE.addEventListener('click', (e) => {
   showSimpleMenu(e.currentTarget, [
     { label: '自动翻译缺失项', fn: () => translateMissingSkills() },

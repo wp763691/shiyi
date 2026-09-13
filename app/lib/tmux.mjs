@@ -7,7 +7,7 @@ const TMUX_CANDIDATES = ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux', '/usr/
 let tmuxPathCache = null;
 const scrollConfigured = new Set();
 
-// 让滚轮滚动 tmux 窗格历史（copy-mode），而不是被 TUI 吃掉
+// 保留更长的窗格历史；不默认接管滚轮（避免误入 copy-mode 后无法输入）
 export async function ensureTmuxScrollOptions(sessionName) {
   const bin = await tmuxBin();
   if (!bin || !sessionName) return;
@@ -19,7 +19,7 @@ export async function ensureTmuxScrollOptions(sessionName) {
   }
   if (scrollConfigured.has(sessionName)) return;
   try {
-    await execFileP(bin, ['set-option', '-t', sessionName, 'mouse', 'on'], { timeout: 5000 });
+    await execFileP(bin, ['set-option', '-t', sessionName, 'mouse', 'off'], { timeout: 5000 });
     scrollConfigured.add(sessionName);
   } catch { /* 会话可能已不存在 */ }
 }
