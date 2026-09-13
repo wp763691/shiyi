@@ -340,7 +340,10 @@ body.resizing-drawer { cursor: col-resize; user-select: none; }
 .btn.primary-ghost:hover { background: rgba(52, 85, 209, 0.14); }
 .mini-panel { display: flex; flex-direction: column; min-height: 0; flex: 0 0 auto; max-height: 42%; }
 .wb-drawer .mini-panel + .mini-panel:not(.collapsed) { flex: 1 1 auto; max-height: none; }
-.wb-drawer.history-collapsed .mini-panel:first-child:not(.collapsed) { flex: 1 1 auto; max-height: none; }
+.wb-drawer.history-collapsed section.mini-panel:first-of-type:not(.collapsed) { flex: 1 1 auto; max-height: none; }
+.wb-drawer:has(.mini-panel + .mini-panel.collapsed) section.mini-panel:first-of-type:not(.collapsed) {
+  flex: 1 1 auto; max-height: none;
+}
 .mini-panel.collapsed { flex: 0 0 auto; max-height: none; }
 .wb-drawer .mini-panel + .mini-panel.collapsed { margin-top: auto; }
 .mini-panel.collapsed .rows.compact { display: none; }
