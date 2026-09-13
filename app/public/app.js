@@ -4,8 +4,7 @@ const LIVE_COUNT = document.getElementById('liveCount');
 const HIST_COUNT = document.getElementById('historyCount');
 const SKILLS_COUNT = document.getElementById('skillsCount');
 const SKILL_ROWS = document.getElementById('skillRows');
-const SKILL_TRANSLATE = document.getElementById('skillTranslate');
-const SKILL_LANG_TOGGLE = document.getElementById('skillLangToggle');
+const SKILL_MORE = document.getElementById('skillMore');
 const TRANS_BACKDROP = document.getElementById('transBackdrop');
 const TRANS_TITLE = document.getElementById('transTitle');
 const TRANS_NAME = document.getElementById('transName');
@@ -17,7 +16,7 @@ const RENAME_INPUT = document.getElementById('renameInput');
 const RENAME_CANCEL = document.getElementById('renameCancel');
 const RENAME_SAVE = document.getElementById('renameSave');
 let renameKey = null;
-let showZh = true;
+let showZh = (() => { try { return localStorage.getItem('shiyi.skillLang') !== 'en'; } catch { return true; } })();
 let transCurrent = null;
 const TAB_SESSIONS = document.getElementById('tab-sessions');
 const TAB_SKILLS = document.getElementById('tab-skills');
@@ -412,6 +411,27 @@ function showRowMenu(anchor, w) {
   }, 0);
 }
 
+function showSimpleMenu(anchor, items) {
+  const existed = document.querySelector('.row-menu');
+  closeRowMenu();
+  if (existed) return;
+  const menu = el('div', 'row-menu');
+  for (const it of items) {
+    if (it.sep) { menu.appendChild(el('div', 'row-menu-sep')); continue; }
+    const b = el('button', `row-menu-item${it.danger ? ' danger' : ''}`, `${it.check ? '✓ ' : ''}${it.label}`);
+    b.onclick = () => { closeRowMenu(); it.fn(); };
+    menu.appendChild(b);
+  }
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.top = `${Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 10)}px`;
+  menu.style.left = `${Math.min(r.left, window.innerWidth - menu.offsetWidth - 10)}px`;
+  setTimeout(() => {
+    document.addEventListener('click', closeRowMenu, { once: true });
+    document.addEventListener('keydown', closeRowMenu, { once: true });
+  }, 0);
+}
+
 function baseHistory() {
   const runningIds = new Set(
     (state.windows || []).map((w) => w.session?.sessionId).filter(Boolean)
@@ -549,7 +569,8 @@ function renderSkills() {
     const toolText = s.tool === 'agents' ? '本地' : s.toolLabel;
     line1.append(el('span', `tag ${toolCls}`, toolText));
     line1.append(el('span', `tag scope-${s.scope}`, s.scope === 'project' ? '项目' : '全局'));
-    if (showZh && !tr) line1.append(el('span', 'tag', '描述未译'));
+    if (tr) line1.append(el('span', 'tag', '译'));
+    else if (showZh) line1.append(el('span', 'tag', '未译'));
     main.appendChild(line1);
 
     const descText = showZh && tr?.descZh ? tr.descZh : s.description;
@@ -567,20 +588,10 @@ function renderSkills() {
     row.appendChild(main);
 
     const actions = el('div', 'row-actions');
-    const transBtn = el('button', 'btn small', tr ? '改译' : '译');
-    transBtn.title = '修正中文译文（保存后锁定）';
-    transBtn.onclick = () => openTransEditor(s, tr);
-    actions.appendChild(transBtn);
-    if (tr) {
-      const reBtn = el('button', 'btn small', '重译');
-      reBtn.title = '用当前模型重新翻译该技能';
-      reBtn.onclick = () => retranslateSkill(s, reBtn);
-      actions.appendChild(reBtn);
-    }
-    const folderBtn = el('button', 'btn small', '文件夹');
-    folderBtn.onclick = () => act({ action: 'open', reveal: true, path: s.folder });
     const editBtn = el('button', 'btn small', '编辑');
     editBtn.onclick = () => act({ action: 'open', reveal: false, path: s.path });
+    const folderBtn = el('button', 'btn small', '文件夹');
+    folderBtn.onclick = () => act({ action: 'open', reveal: true, path: s.folder });
     const delBtn = el('button', 'btn danger small', '删除');
     delBtn.onclick = () => {
       const where =
@@ -595,7 +606,16 @@ function renderSkills() {
         }
       );
     };
-    actions.append(folderBtn, editBtn, delBtn);
+    const moreBtn = el('button', 'btn small more-btn', '⋯');
+    moreBtn.title = '更多操作';
+    moreBtn.onclick = (e) => showSimpleMenu(e.currentTarget, [
+      { label: '重译描述', fn: () => retranslateSkill(s) },
+      { label: '修正译文（锁定）', fn: () => openTransEditor(s, tr) },
+      { label: '复制原文描述', fn: () => navigator.clipboard?.writeText(s.description || '').then(() => toast('已复制原文描述')).catch(() => toast('复制失败', true)) },
+      { sep: true },
+      { label: '删除技能', danger: true, fn: () => delBtn.onclick() },
+    ]);
+    actions.append(editBtn, folderBtn, moreBtn);
     row.appendChild(actions);
     SKILL_ROWS.appendChild(row);
   }
@@ -762,6 +782,12 @@ async function act(payload) {
         hideModal();
         toast('已移至回收目录（可从那里找回）');
         refresh();
+      } else if (payload.action === 'clear-skill-translations') {
+        hideModal();
+        toast('译文缓存已清除');
+        refresh();
+      } else if (payload.action === 'open-translation-cache') {
+        toast('已在 Finder 中打开翻译缓存文件');
       } else if (payload.action === 'terminate') {
         hideModal();
         toast('已终止会话');
@@ -1323,9 +1349,7 @@ async function saveTransEditor() {
 }
 
 async function translateMissingSkills() {
-  SKILL_TRANSLATE.disabled = true;
-  const old = SKILL_TRANSLATE.textContent;
-  SKILL_TRANSLATE.textContent = '翻译中…';
+  toast('正在翻译缺失项…');
   try {
     const res = await fetch('/api/action', {
       method: 'POST',
@@ -1338,16 +1362,35 @@ async function translateMissingSkills() {
     await refresh();
   } catch (e) {
     toast(`翻译失败：${e.message}`, true);
-  } finally {
-    SKILL_TRANSLATE.textContent = old;
-    SKILL_TRANSLATE.disabled = false;
   }
 }
 
-async function retranslateSkill(skill, btn) {
-  const old = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '译…';
+function toggleSkillLang() {
+  showZh = !showZh;
+  try { localStorage.setItem('shiyi.skillLang', showZh ? 'zh' : 'en'); } catch { /* 忽略 */ }
+  renderSkills();
+  toast(showZh ? '已切换为中文描述' : '已切换为英文原文');
+}
+
+async function forceTranslateAll() {
+  toast('正在重新翻译全部技能（较慢）…');
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'translate-skills', force: true }),
+    });
+    const data = await res.json();
+    if (!data.ok) toast(`翻译失败：${data.error || ''}`, true);
+    else toast(`已重新翻译 ${data.translated} 项`);
+    await refresh();
+  } catch (e) {
+    toast(`翻译失败：${e.message}`, true);
+  }
+}
+
+async function retranslateSkill(skill) {
+  toast(`正在重译 ${skill.name}…`);
   try {
     const res = await fetch('/api/action', {
       method: 'POST',
@@ -1360,9 +1403,6 @@ async function retranslateSkill(skill, btn) {
     await refresh();
   } catch (e) {
     toast(`重译失败：${e.message}`, true);
-  } finally {
-    btn.textContent = old;
-    btn.disabled = false;
   }
 }
 
@@ -1601,11 +1641,21 @@ RAIL_TOGGLE.addEventListener('click', () => setDrawer(!drawerOpen));
 DRAWER_CLOSE.addEventListener('click', () => setDrawer(false));
 TERM_NEW.addEventListener('click', openNewSession);
 TERM_CLEAR.addEventListener('click', clearActiveTerm);
-SKILL_TRANSLATE.addEventListener('click', translateMissingSkills);
-SKILL_LANG_TOGGLE.addEventListener('click', () => {
-  showZh = !showZh;
-  SKILL_LANG_TOGGLE.textContent = showZh ? '中 / EN' : 'EN';
-  renderSkills();
+SKILL_MORE.addEventListener('click', (e) => {
+  showSimpleMenu(e.currentTarget, [
+    { label: '自动翻译缺失项', fn: () => translateMissingSkills() },
+    { label: '全部重新翻译', fn: () => forceTranslateAll() },
+    { sep: true },
+    { label: showZh ? '显示英文原文' : '显示中文描述', check: showZh, fn: toggleSkillLang },
+    { label: '打开翻译缓存文件', fn: () => act({ action: 'open-translation-cache' }) },
+    {
+      label: '清除译文缓存',
+      danger: true,
+      fn: () => showConfirm('清除全部译文缓存？', '只是删除本地翻译缓存，技能文件不受影响；下次可重新翻译。', async () => {
+        await act({ action: 'clear-skill-translations' });
+      }),
+    },
+  ]);
 });
 TRANS_CANCEL.addEventListener('click', () => { TRANS_BACKDROP.hidden = true; });
 TRANS_SAVE.addEventListener('click', saveTransEditor);

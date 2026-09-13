@@ -5,6 +5,20 @@ import os from 'node:os';
 const STORE_DIR = path.join(os.homedir(), '.shiyi');
 const STORE_FILE = path.join(STORE_DIR, 'skill-translations.json');
 
+export function translationStorePath() {
+  return STORE_FILE;
+}
+
+export async function clearTranslations() {
+  await saveTranslations({});
+  return { ok: true };
+}
+
+async function saveTranslations(entries) {
+  await mkdir(STORE_DIR, { recursive: true });
+  await writeFile(STORE_FILE, JSON.stringify({ version: 1, entries }, null, 2));
+}
+
 export async function loadTranslations() {
   try {
     const raw = await readFile(STORE_FILE, 'utf8');
@@ -13,11 +27,6 @@ export async function loadTranslations() {
   } catch {
     return {};
   }
-}
-
-async function saveTranslations(entries) {
-  await mkdir(STORE_DIR, { recursive: true });
-  await writeFile(STORE_FILE, JSON.stringify({ version: 1, entries }, null, 2));
 }
 
 export async function setManualTranslation(skillPath, nameZh, descZh) {

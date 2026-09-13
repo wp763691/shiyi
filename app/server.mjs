@@ -20,7 +20,14 @@ import {
 } from './lib/registry.mjs';
 import { listTmuxAgents } from './lib/tmux.mjs';
 import { scanConfigFiles, readConfigFile, saveConfigFile } from './lib/configfiles.mjs';
-import { loadTranslations, translateSkills, setManualTranslation, translationStats } from './lib/translations.mjs';
+import {
+  loadTranslations,
+  translateSkills,
+  setManualTranslation,
+  translationStats,
+  clearTranslations,
+  translationStorePath,
+} from './lib/translations.mjs';
 import { loadSessionNames, setSessionName } from './lib/names.mjs';
 import {
   openTmuxTerminal,
@@ -439,6 +446,23 @@ const server = http.createServer(async (req, res) => {
         try {
           const out = await setSessionName(body.key, body.name);
           sendJson(res, 200, out);
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+      if (body.action === 'clear-skill-translations') {
+        try {
+          sendJson(res, 200, await clearTranslations());
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+      if (body.action === 'open-translation-cache') {
+        try {
+          await execFileP('/usr/bin/open', ['-R', translationStorePath()], { timeout: 8000 });
+          sendJson(res, 200, { ok: true });
         } catch (e) {
           sendJson(res, 500, { ok: false, error: String(e?.message || e) });
         }
