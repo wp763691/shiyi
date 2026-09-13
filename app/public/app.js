@@ -1610,6 +1610,10 @@ async function refresh() {
     (state.rules || []).length + (state.mcp || []).length +
     (state.agents || []).length + (state.commands || []).length + (state.hooks || []).length;
   REFRESH.textContent = `更新于 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`;
+  if (state.demo && !window.__demoOpened) {
+    window.__demoOpened = true;
+    setTimeout(() => openEmbeddedTmux('shiyi-demo'), 300);
+  }
 }
 
 TAB_SESSIONS.addEventListener('click', () => activateTab('sessions'));
@@ -1739,6 +1743,12 @@ DIR_FILTER.addEventListener('change', renderHistory);
 
 refresh();
 activateTab(location.hash.replace('#', '') || (() => { try { return localStorage.getItem('shiyi.tab'); } catch { return null; } })() || 'sessions');
+if (location.hash === '#mcp') {
+  activateTab('config');
+  configView = 'mcp';
+  for (const b of CONFIG_VIEW_BTNS) b.classList.toggle('active', b.dataset.cview === 'mcp');
+  renderConfig();
+}
 window.addEventListener('hashchange', () => activateTab(location.hash.replace('#', '')));
 setInterval(refresh, 5000);
 setInterval(() => { renderLive(); renderHistory(); renderSkills(); renderConfig(); }, 30000);

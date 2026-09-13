@@ -201,6 +201,7 @@ async function projectDirsForTranslate() {
 function demoState() {
   const now = Date.now();
   return {
+    demo: true,
     sessions: [
       {
         sessionId: 'demo-session-0001', tool: 'claude', title: '项目架构重构讨论', cwd: '/Users/demo/code/awesome-app',
@@ -212,6 +213,11 @@ function demoState() {
         branch: 'feat/ci', lastTs: now - 2 * 3600000, lastUserText: '看看 GitHub Actions 的缓存 key', exchanges: 18,
         dirName: '…/code/awesome-app', mb: 0.3,
       },
+      {
+        sessionId: 'demo-session-0003', tool: 'claude', title: 'API 文档整理', cwd: '/Users/demo/code/docs-site',
+        branch: 'main', lastTs: now - 26 * 3600000, lastUserText: '把新增的接口补进文档', exchanges: 9,
+        dirName: '…/code/docs-site', mb: 0.2,
+      },
     ],
     windows: [],
     tmuxSessions: [
@@ -221,6 +227,11 @@ function demoState() {
       { name: 'code-reviewer', description: '按行业惯例审查 Pull Request 的风险与测试覆盖。', tool: 'claude', toolLabel: 'Claude Code', scope: 'global', folder: '/Users/demo/.claude/skills/code-reviewer', mtime: now - 86400000 },
       { name: 'doc-writer', description: '把代码变更整理成清晰的中英文技术文档。', tool: 'codex', toolLabel: 'Codex', scope: 'global', folder: '/Users/demo/.codex/skills/doc-writer', mtime: now - 172800000 },
       { name: 'architect-mentor', description: '项目级架构评审与改进建议。', tool: 'claude', toolLabel: 'Claude Code', scope: 'project', project: '/Users/demo/code/awesome-app', projectName: '…/code/awesome-app', folder: '/Users/demo/code/awesome-app/.claude/skills/architect-mentor', mtime: now - 3600000 },
+      { name: 'release-notes', description: '根据提交记录生成面向用户的发布说明。', tool: 'claude', toolLabel: 'Claude Code', scope: 'global', folder: '/Users/demo/.claude/skills/release-notes', mtime: now - 7200000 },
+      { name: 'api-designer', description: '设计 REST/GraphQL 接口并输出 OpenAPI 草案。', tool: 'codex', toolLabel: 'Codex', scope: 'global', folder: '/Users/demo/.codex/skills/api-designer', mtime: now - 10800000 },
+      { name: 'test-planner', description: '为改动梳理测试矩阵与边界用例。', tool: 'claude', toolLabel: 'Claude Code', scope: 'global', folder: '/Users/demo/.claude/skills/test-planner', mtime: now - 14400000 },
+      { name: 'sql-optimizer', description: '分析慢查询并给出索引与改写建议。', tool: 'codex', toolLabel: 'Codex', scope: 'global', folder: '/Users/demo/.codex/skills/sql-optimizer', mtime: now - 18000000 },
+      { name: 'ui-review', description: '从可用性与一致性角度评审界面改动。', tool: 'claude', toolLabel: 'Claude Code', scope: 'project', project: '/Users/demo/code/awesome-app', projectName: '…/code/awesome-app', folder: '/Users/demo/code/awesome-app/.claude/skills/ui-review', mtime: now - 21600000 },
     ],
     rules: [
       { kind: 'rule', name: 'CLAUDE.md', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/CLAUDE.md', lines: 42, mtime: now - 3600000, preview: '团队规范：默认英文注释，提交信息遵循 Conventional Commits…' },
@@ -229,9 +240,19 @@ function demoState() {
     mcp: [
       { kind: 'mcp', name: 'codegraph', tool: 'claude', scope: 'global', sourceFile: '/Users/demo/.claude.json', type: 'stdio', command: 'codegraph', args: [], envKeys: [], mtime: now - 3600000 },
       { kind: 'mcp', name: 'context7', tool: 'claude', scope: 'global', sourceFile: '/Users/demo/.claude.json', type: 'http', url: 'https://mcp.context7.com/mcp', envKeys: [], mtime: now - 3600000 },
+      { kind: 'mcp', name: 'gitnexus', tool: 'codex', scope: 'global', sourceFile: '/Users/demo/.codex/config.toml', type: 'stdio', command: 'gitnexus mcp', args: [], envKeys: [], mtime: now - 3600000 },
     ],
-    agents: [], commands: [], hooks: [
+    agents: [
+      { kind: 'agent', name: 'reviewer', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/agents/reviewer.md', lines: 24, mtime: now - 7200000, preview: '严格代码审查：关注风险、边界与测试覆盖。' },
+      { kind: 'agent', name: 'planner', tool: 'codex', scope: 'global', path: '/Users/demo/.codex/agents/planner.md', lines: 18, mtime: now - 7200000, preview: '把需求拆解为可执行任务清单。' },
+    ],
+    commands: [
+      { kind: 'command', name: 'review', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/commands/review.md', lines: 12, mtime: now - 7200000, preview: '对当前改动做一次结构化 Review。' },
+      { kind: 'command', name: 'standup', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/commands/standup.md', lines: 9, mtime: now - 7200000, preview: '汇总昨日进展与今日计划。' },
+    ],
+    hooks: [
       { kind: 'hook', event: 'PreToolUse', matcher: 'Grep|Glob|Bash', command: 'node ~/.claude/hooks/context.cjs', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/settings.json', mtime: now - 3600000 },
+      { kind: 'hook', event: 'PostToolUse', matcher: 'Bash', command: 'node ~/.claude/hooks/audit.cjs', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/settings.json', mtime: now - 3600000 },
     ],
     configFiles: [
       { tool: 'claude', label: 'Claude Code settings', path: '/Users/demo/.claude/settings.json', exists: true, bytes: 1280, mtime: now - 3600000, scope: 'global' },
