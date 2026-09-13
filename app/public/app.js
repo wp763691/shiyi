@@ -1713,7 +1713,10 @@ async function refresh() {
   renderSkills();
   renderConfig();
   renderTermTabs();
-  TAB_SESS_COUNT.textContent = baseHistory().length;
+  const runningCount = liveAll().length;
+  const histCount = baseHistory().length;
+  TAB_SESS_COUNT.textContent = String(runningCount + histCount);
+  TAB_SESSIONS.title = `运行 ${runningCount} · 历史 ${histCount}`;
   TAB_SKILL_COUNT.textContent = (state.skills || []).length;
   TAB_CONFIG_COUNT.textContent =
     (state.rules || []).length + (state.mcp || []).length +
