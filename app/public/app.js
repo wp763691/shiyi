@@ -46,6 +46,7 @@ const MODAL_OK = document.getElementById('modalOk');
 const MODAL_CLOSE = document.getElementById('modalClose');
 const RAIL_TOGGLE = document.getElementById('railToggle');
 const WB_DRAWER = document.getElementById('wbDrawer');
+const DRAWER_RESIZER = document.getElementById('drawerResizer');
 const DRAWER_CLOSE = document.getElementById('drawerClose');
 const TERM_TABS = document.getElementById('termTabs');
 const TERM_STAGE = document.getElementById('termStage');
@@ -1700,6 +1701,37 @@ for (const btn of document.querySelectorAll('[data-search]')) {
 }
 RAIL_TOGGLE.addEventListener('click', () => setDrawer(!drawerOpen));
 DRAWER_CLOSE.addEventListener('click', () => setDrawer(false));
+// 抽屉宽度拖拽
+function applyDrawerWidth(px) {
+  const w = Math.max(240, Math.min(760, Math.round(px)));
+  WB_DRAWER.style.setProperty('--drawer-w', `${w}px`);
+  return w;
+}
+try {
+  const saved = parseFloat(localStorage.getItem('shiyi.drawerW') || '');
+  if (saved) applyDrawerWidth(saved);
+} catch { /* 忽略 */ }
+DRAWER_RESIZER.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const startX = e.clientX;
+  const startW = WB_DRAWER.getBoundingClientRect().width;
+  WB_DRAWER.classList.add('resizing');
+  document.body.classList.add('resizing-drawer');
+  const onMove = (ev) => {
+    applyDrawerWidth(startW + (ev.clientX - startX));
+    scheduleFit();
+  };
+  const onUp = () => {
+    WB_DRAWER.classList.remove('resizing');
+    document.body.classList.remove('resizing-drawer');
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    try { localStorage.setItem('shiyi.drawerW', String(Math.round(WB_DRAWER.getBoundingClientRect().width))); } catch { /* 忽略 */ }
+    scheduleFit();
+  };
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+});
 TERM_NEW.addEventListener('click', openNewSession);
 TERM_CLEAR.addEventListener('click', clearActiveTerm);
 SKILL_MORE.addEventListener('click', (e) => {

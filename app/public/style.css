@@ -317,8 +317,16 @@ body[data-tab='config'] .brand-text p { display: block; }
   transition: width 0.22s ease;
   background: var(--panel-2); border-right: 1px solid var(--line-soft);
   display: flex; flex-direction: column;
+  position: relative;
 }
-.wb-drawer.open { width: 330px; }
+.wb-drawer.open { width: var(--drawer-w, 330px); }
+.wb-drawer.open.resizing { transition: none; }
+.drawer-resizer {
+  position: absolute; right: -3px; top: 0; bottom: 0; width: 7px;
+  cursor: col-resize; z-index: 8;
+}
+.drawer-resizer:hover, body.resizing-drawer .drawer-resizer { background: rgba(52, 85, 209, 0.14); }
+body.resizing-drawer { cursor: col-resize; user-select: none; }
 .drawer-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 12px; border-bottom: 1px solid var(--line-soft);
