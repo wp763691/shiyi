@@ -5,6 +5,24 @@ import { access } from 'node:fs/promises';
 const execFileP = promisify(execFile);
 const TMUX_CANDIDATES = ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux', '/usr/bin/tmux'];
 let tmuxPathCache = null;
+const scrollConfigured = new Set();
+
+// 让滚轮滚动 tmux 窗格历史（copy-mode），而不是被 TUI 吃掉
+export async function ensureTmuxScrollOptions(sessionName) {
+  const bin = await tmuxBin();
+  if (!bin || !sessionName) return;
+  if (scrollConfigured.has('global')) {
+    // 只对每个会话设置一次 mouse
+  } else {
+    try { await execFileP(bin, ['set-option', '-g', 'history-limit', '50000'], { timeout: 5000 }); } catch { /* 忽略 */ }
+    scrollConfigured.add('global');
+  }
+  if (scrollConfigured.has(sessionName)) return;
+  try {
+    await execFileP(bin, ['set-option', '-t', sessionName, 'mouse', 'on'], { timeout: 5000 });
+    scrollConfigured.add(sessionName);
+  } catch { /* 会话可能已不存在 */ }
+}
 
 export async function tmuxBin() {
   if (tmuxPathCache) return tmuxPathCache;

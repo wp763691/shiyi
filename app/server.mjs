@@ -18,7 +18,7 @@ import {
   trashRuleFile,
   checkMcp,
 } from './lib/registry.mjs';
-import { listTmuxAgents, normalizeSessionName, renameTmuxSession, tmuxBin } from './lib/tmux.mjs';
+import { listTmuxAgents, normalizeSessionName, renameTmuxSession, tmuxBin, ensureTmuxScrollOptions } from './lib/tmux.mjs';
 import { scanConfigFiles, readConfigFile, saveConfigFile } from './lib/configfiles.mjs';
 import {
   loadTranslations,
@@ -183,7 +183,7 @@ async function buildState() {
     agents,
     commands,
     hooks,
-    tmuxSessions: (tmuxAgents.items || []).map((t) => {
+    tmuxSessions: await Promise.all((tmuxAgents.items || []).map(async (t) => {
       const procs = procsRes.procs || [];
       const parentOf = new Map(procs.map((p) => [p.pid, p.ppid]));
       const isDescendant = (pid, ancestor) => {
@@ -205,12 +205,13 @@ async function buildState() {
       for (const root of candidates.filter((c) => !candPids.has(parentOf.get(c.pid)))) {
         memMB += treeRssMB(root.pid, table);
       }
+      await ensureTmuxScrollOptions(t.name);
       return {
         ...t,
         memMB,
         session: s ? { sessionId: s.sessionId, tool: s.tool, title: s.title, lastTs: s.lastTs, cwd: s.cwd } : null,
       };
-    }),
+    })),
     configFiles,
     skillTranslations: await loadTranslations(),
     translationStats: await translationStats(skills),
@@ -446,6 +447,7 @@ const server = http.createServer(async (req, res) => {
           }
           const cmd = tool === 'bash' ? 'bash' : perm ? `${tool} ${perm}` : tool;
           await execFileP(tmux, ['new-session', '-d', '-s', safeName, '-c', dir, cmd], { timeout: 6000 });
+          await ensureTmuxScrollOptions(safeName);
           sendJson(res, 200, { ok: true, name: safeName, dir, tool });
         } catch (e) {
           sendJson(res, 500, { ok: false, error: String(e?.message || e).slice(0, 200) });
@@ -594,6 +596,7 @@ const server = http.createServer(async (req, res) => {
           }
           const cmd = tool === 'codex' ? `codex resume ${sid}` : `claude --resume ${sid}`;
           await execFileP(tmux, ['new-session', '-d', '-s', name, '-c', dir, cmd], { timeout: 8000 });
+          await ensureTmuxScrollOptions(name);
           sendJson(res, 200, { ok: true, name, dir, tool });
         } catch (e) {
           sendJson(res, 500, { ok: false, error: String(e?.message || e) });

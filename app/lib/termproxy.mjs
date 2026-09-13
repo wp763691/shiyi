@@ -5,7 +5,7 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { tmuxBin } from './tmux.mjs';
+import { tmuxBin, ensureTmuxScrollOptions } from './tmux.mjs';
 
 const sessions = new Map();
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -17,6 +17,7 @@ export async function openTmuxTerminal(sessionName) {
   }
   const tmux = await tmuxBin();
   if (!tmux) return { ok: false, error: '未安装 tmux，请先运行：brew install tmux' };
+  await ensureTmuxScrollOptions(sessionName);
   const id = randomUUID();
   const bridge = path.join(moduleDir, 'pty_bridge.py');
   const ctrl = path.join(os.tmpdir(), `zyin-ctrl-${id}`);
