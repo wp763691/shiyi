@@ -222,20 +222,7 @@ function liveAll() {
     if (pb) return 1;
     return liveSortTs(b) - liveSortTs(a);
   });
-  // 同一会话（sessionId）多实例合并为一行
-  const groups = [];
-  const bySid = new Map();
-  for (const item of all) {
-    const sid = item.session?.sessionId;
-    if (sid && bySid.has(sid)) {
-      bySid.get(sid).instances.push(item);
-      continue;
-    }
-    const w = { ...item, instances: [item] };
-    groups.push(w);
-    if (sid) bySid.set(sid, w);
-  }
-  return groups;
+  return all;
 }
 
 function liveKey(w) {
@@ -382,7 +369,6 @@ function renderLive() {
     if (w.tmux) meta.append(el('span', 'chip', `窗格 ${w.pane}`));
     if (w.session?.cwd) meta.append(el('span', 'chip path', w.session.cwd));
     if (w.session?.lastTs) meta.append(el('span', 'chip', fmtRel(w.session.lastTs) + '活跃'));
-    if (w.instances && w.instances.length > 1) meta.append(el('span', 'chip', `${w.instances.length} 个实例`));
     main.appendChild(meta);
     row.appendChild(main);
 
@@ -392,22 +378,15 @@ function renderLive() {
     pinBtn.title = pinned ? '取消置顶' : '置顶该会话';
     pinBtn.onclick = () => togglePin(w);
     actions.appendChild(pinBtn);
-    const tmuxInst = (w.instances || [w]).find((i) => i.tmux);
-    const winInst = (w.instances || [w]).find((i) => i.win);
-    if (tmuxInst) {
+    if (w.tmux) {
       const quick = el('button', 'btn small quick-term', '终端');
-      quick.title = '内置终端';
-      quick.onclick = () => handleEmbeddedOpen(tmuxInst.sessionName);
-      actions.appendChild(quick);
-    } else if (winInst) {
-      const quick = el('button', 'btn small quick-term', '聚焦');
-      quick.title = '聚焦窗口';
-      quick.onclick = () => act({ action: 'focus', win: winInst.win, tab: winInst.tab });
+      quick.title = '内置终端'; 
+      quick.onclick = () => handleEmbeddedOpen(w.sessionName);
       actions.appendChild(quick);
     }
     const more = el('button', 'btn small more-btn', '⋯');
     more.title = '更多操作';
-    more.onclick = (e) => showGroupMenu(e.currentTarget, w);
+    more.onclick = (e) => showRowMenu(e.currentTarget, w);
     actions.appendChild(more);
     row.appendChild(actions);
     row.ondblclick = (e) => {
@@ -496,30 +475,6 @@ function showSimpleMenu(anchor, items) {
     document.addEventListener('click', closeRowMenu, { once: true });
     document.addEventListener('keydown', closeRowMenu, { once: true });
   }, 0);
-}
-
-function instanceLabel(inst) {
-  if (inst.tmux) return `tmux ${inst.sessionName}`;
-  if (inst.win) return `iTerm 窗口 ${inst.win} · 标签 ${inst.tab}`;
-  return `进程 ${inst.procPid || inst.tty || '未知'}`;
-}
-
-function showGroupMenu(anchor, w) {
-  const items = [];
-  for (const inst of w.instances || [w]) {
-    if (inst.tmux) {
-      items.push({ label: `内置终端 · ${inst.sessionName}`, fn: () => handleEmbeddedOpen(inst.sessionName) });
-      items.push({ label: `接管会话（iTerm）· ${inst.sessionName}`, fn: () => act({ action: 'tmux-attach', name: inst.sessionName }) });
-    } else if (inst.win) {
-      items.push({ label: `聚焦窗口 ${inst.win} · ${inst.tab}`, fn: () => act({ action: 'focus', win: inst.win, tab: inst.tab }) });
-    }
-  }
-  items.push({ sep: true });
-  items.push({ label: '重命名（显示别名）', fn: () => openRenameDialog(liveRenameKeys(w)[0], liveTitle(w)) });
-  for (const inst of w.instances || [w]) {
-    items.push({ label: `终止 · ${instanceLabel(inst)}`, danger: true, fn: () => terminateRow(inst) });
-  }
-  showSimpleMenu(anchor, items);
 }
 
 function baseHistory() {
