@@ -10,32 +10,32 @@
 <body>
   <header class="topbar">
     <div class="brand">
-      <img class="brand-mark" src="/brand.png" alt="拾忆" width="42" height="42">
+      <img class="brand-mark" src="/brand.png" alt="拾忆" title="拾忆" width="42" height="42">
       <div class="brand-text">
         <h1>拾忆</h1>
         <p>把散落在 Claude Code / Codex 里的会话与技能，一处拾回</p>
       </div>
     </div>
+    <nav class="tabbar" role="tablist" aria-label="主导航">
+      <button class="tab active" id="tab-sessions" data-tab="sessions" role="tab" aria-selected="true">
+        会话
+        <em class="tab-count" id="tabSessCount">–</em>
+      </button>
+      <button class="tab" id="tab-skills" data-tab="skills" role="tab" aria-selected="false" tabindex="-1">
+        技能
+        <em class="tab-count" id="tabSkillCount">–</em>
+      </button>
+      <button class="tab" id="tab-config" data-tab="config" role="tab" aria-selected="false" tabindex="-1">
+        配置
+        <em class="tab-count" id="tabConfigCount">–</em>
+      </button>
+    </nav>
     <div class="top-meta">
       <span class="conn"><i class="dot"></i><span id="connText">连接中…</span></span>
       <span id="refreshText" class="muted"></span>
+      <button class="btn small" id="focusToggle" title="专注模式（⌘⇧F）">⌘⇧F</button>
     </div>
   </header>
-
-  <nav class="tabbar" role="tablist" aria-label="主导航">
-    <button class="tab active" id="tab-sessions" data-tab="sessions" role="tab" aria-selected="true">
-      会话
-      <em class="tab-count" id="tabSessCount">–</em>
-    </button>
-    <button class="tab" id="tab-skills" data-tab="skills" role="tab" aria-selected="false" tabindex="-1">
-      技能
-      <em class="tab-count" id="tabSkillCount">–</em>
-    </button>
-    <button class="tab" id="tab-config" data-tab="config" role="tab" aria-selected="false" tabindex="-1">
-      配置
-      <em class="tab-count" id="tabConfigCount">–</em>
-    </button>
-  </nav>
 
   <main id="pageMain">
     <div id="warnings"></div>

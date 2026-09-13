@@ -54,6 +54,7 @@ const TERM_EMPTY = document.getElementById('termEmpty');
 const STATUS_LEFT = document.getElementById('statusLeft');
 const STATUS_RIGHT = document.getElementById('statusRight');
 const TERM_CLEAR = document.getElementById('termClear');
+const FOCUS_TOGGLE = document.getElementById('focusToggle');
 const TERM_NEW = document.getElementById('termNew');
 const NEW_BACKDROP = document.getElementById('newBackdrop');
 const NEW_NAME = document.getElementById('newName');
@@ -78,6 +79,15 @@ let drawerOpen = false;
 let termSessions = [];
 let activeTermName = null;
 let fitTimer = null;
+let focusMode = false;
+
+function setFocusMode(on) {
+  focusMode = on;
+  document.body.classList.toggle('focus-mode', on);
+  if (!on) document.body.classList.remove('top-hover');
+  toast(on ? '已进入专注模式（⌘⇧F 退出，鼠标移到顶部显示导航）' : '已退出专注模式');
+  scheduleFit();
+}
 
 function mcpKey(x) {
   return `${x.tool}|${x.scope}|${x.name}|${x.sourceFile || x.path || ''}`;
@@ -1791,6 +1801,12 @@ SKILL_MORE.addEventListener('click', (e) => {
     },
   ]);
 });
+FOCUS_TOGGLE.addEventListener('click', () => setFocusMode(!focusMode));
+document.addEventListener('mousemove', (e) => {
+  if (!focusMode) return;
+  if (e.clientY < 8) document.body.classList.add('top-hover');
+  else if (e.clientY > 60) document.body.classList.remove('top-hover');
+});
 TRANS_CANCEL.addEventListener('click', () => { TRANS_BACKDROP.hidden = true; });
 TRANS_SAVE.addEventListener('click', saveTransEditor);
 RENAME_CANCEL.addEventListener('click', () => { RENAME_BACKDROP.hidden = true; });
@@ -1835,6 +1851,7 @@ window.addEventListener('resize', () => {
 document.addEventListener('keydown', (e) => {
   if (!e.metaKey && !e.ctrlKey) return;
   const key = e.key.toLowerCase();
+  if (key === 'f' && e.shiftKey) { e.preventDefault(); setFocusMode(!focusMode); return; }
   if (key === 'l') { e.preventDefault(); setDrawer(!drawerOpen); return; }
   if (key === 'k' && !e.shiftKey) { e.preventDefault(); setDrawer(false); return; }
   if (/^[1-9]$/.test(key) && !e.shiftKey) {

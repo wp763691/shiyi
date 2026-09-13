@@ -32,7 +32,12 @@ body.offline .dot { background: var(--danger); box-shadow: none; }
 
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  max-width: 1080px; margin: 0 auto; padding: 14px 24px 8px; gap: 14px;
+  max-width: none; margin: 0; padding: 6px 16px; gap: 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(247, 248, 250, 0.92);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  backdrop-filter: blur(14px) saturate(1.3);
+  z-index: 40;
 }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-mark {
@@ -40,6 +45,7 @@ body.offline .dot { background: var(--danger); box-shadow: none; }
   box-shadow: 0 3px 10px rgba(70, 110, 220, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.3);
   display: block;
 }
+.brand-text { display: none; }
 .brand-text h1 {
   margin: 0; font-size: 17px; font-weight: 680; letter-spacing: 0.03em;
 }
@@ -186,6 +192,15 @@ select {
   backdrop-filter: blur(2px);
 }
 .backdrop[hidden] { display: none; }
+/* 专注模式：顶栏隐藏，鼠标移到顶部浮出 */
+body.focus-mode .topbar {
+  position: fixed; left: 0; right: 0; top: 0;
+  transform: translateY(-105%); opacity: 0; pointer-events: none;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+body.focus-mode.top-hover .topbar {
+  transform: translateY(0); opacity: 1; pointer-events: auto;
+}
 .seg {
   display: inline-flex; align-items: center; gap: 2px;
   background: #eceef3; border-radius: 9px; padding: 2px;
@@ -248,8 +263,8 @@ body[data-tab='sessions'] {
   height: 100vh; overflow: hidden;
   display: flex; flex-direction: column;
 }
-body[data-tab='sessions'] .topbar,
-body[data-tab='sessions'] .tabbar { flex: 0 0 auto; }
+body[data-tab='sessions'] .topbar { flex: 0 0 auto; }
+body[data-tab='sessions'] .tabbar { flex: 1 1 auto; }
 body[data-tab='sessions'] #pageMain {
   max-width: none;
   margin: 0;
@@ -261,8 +276,7 @@ body[data-tab='sessions'] #pageMain {
 body[data-tab='sessions'] #pageMain > *:not(#panel-sessions) { display: none; }
 body[data-tab='sessions'] #panel-sessions { flex: 1; min-height: 0; display: flex; }
 body[data-tab='sessions'] #panel-sessions .workbench { width: 100%; }
-body[data-tab='sessions'] .topbar { max-width: none; padding-top: 10px; padding-bottom: 6px; }
-body[data-tab='sessions'] .topbar { margin: 0; }
+body[data-tab='sessions'] .topbar { max-width: none; margin: 0; padding: 6px 16px; }
 body[data-tab='skills'] #pageMain,
 body[data-tab='config'] #pageMain {
   max-width: none;
@@ -277,9 +291,9 @@ body[data-tab='config'] {
   display: flex; flex-direction: column;
 }
 body[data-tab='skills'] .topbar,
+body[data-tab='config'] .topbar { flex: 0 0 auto; }
 body[data-tab='skills'] .tabbar,
-body[data-tab='config'] .topbar,
-body[data-tab='config'] .tabbar { flex: 0 0 auto; }
+body[data-tab='config'] .tabbar { flex: 1 1 auto; }
 body[data-tab='skills'] #pageMain,
 body[data-tab='config'] #pageMain { flex: 1; min-height: 0; }
 body[data-tab='skills'] #warnings,
@@ -523,18 +537,16 @@ body.resizing-drawer { cursor: col-resize; user-select: none; }
 
 /* ---------- 一级 Tab 导航 ---------- */
 .tabbar {
-  position: sticky; top: 0; z-index: 15;
-  display: flex; gap: 4px; justify-content: center;
-  padding: 0 20px;
-  background: rgba(247, 248, 250, 0.86);
-  -webkit-backdrop-filter: blur(18px) saturate(1.4);
-  backdrop-filter: blur(18px) saturate(1.4);
-  border-bottom: 1px solid var(--line-soft);
+  position: static;
+  display: flex; gap: 2px; justify-content: center; flex: 1;
+  padding: 0;
+  background: transparent; border: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
 }
 .tab {
   appearance: none; border: none; background: transparent;
   font: inherit; font-size: 14px; color: var(--muted);
-  padding: 10px 20px 9px; cursor: pointer;
+  padding: 7px 14px; cursor: pointer;
   display: inline-flex; gap: 8px; align-items: center;
   position: relative; letter-spacing: 0.02em;
   transition: color 0.15s ease;
@@ -543,7 +555,7 @@ body.resizing-drawer { cursor: col-resize; user-select: none; }
 .tab:focus-visible { outline: 2px solid rgba(52, 85, 209, 0.45); outline-offset: -2px; border-radius: 8px; }
 .tab.active { color: var(--text); font-weight: 650; }
 .tab.active::after {
-  content: ""; position: absolute; left: 18px; right: 18px; bottom: 0;
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: -6px;
   height: 2.5px; border-radius: 2px;
   background: linear-gradient(90deg, var(--accent), #7f9cff);
 }
