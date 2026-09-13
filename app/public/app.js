@@ -1219,6 +1219,42 @@ function dbg(msg) {
 window.addEventListener('error', (e) => dbg(`全局错误 ${e.message} @ ${e.filename}:${e.lineno}`));
 window.addEventListener('unhandledrejection', (e) => dbg(`未处理Promise ${e.reason?.message || e.reason}`));
 
+// ---------- 供原生层调用的剪贴板接口 ----------
+// WKWebView 不允许页面主动读剪贴板，⌘C / ⌘V 由 Swift 侧读写 NSPasteboard 后走这里。
+// 焦点在哪由 __shiyiFocusArea 判断：终端 → 原生注入；普通输入框 → 交回系统默认粘贴。
+window.__shiyiFocusArea = () => {
+  const rec = activeRec();
+  if (!rec) return 'input';
+  const el = document.activeElement;
+  if (!el) return 'terminal';
+  if (typeof el.closest === 'function') {
+    if (el.closest('.term-stage') || el.classList?.contains('xterm-helper-textarea')) return 'terminal';
+    if (el.closest('input, textarea, select, [contenteditable="true"]')) return 'input';
+  }
+  return 'terminal';
+};
+
+window.__shiyiPaste = (text) => {
+  const rec = activeRec();
+  if (!rec) return false;
+  const data = String(text ?? '');
+  if (!data) return false;
+  try {
+    rec.term.paste(data);          // 交给 xterm：换行归一 + 支持 bracketed paste
+  } catch {
+    rec.buf = (rec.buf || '') + data;
+    flushRecInput(rec);
+  }
+  try { rec.term.focus(); } catch { /* 忽略 */ }
+  return true;
+};
+
+window.__shiyiCopySelection = () => {
+  const rec = activeRec();
+  if (!rec) return '';
+  try { return rec.term.getSelection() || ''; } catch { return ''; }
+};
+
 function bytesToB64(bytes) {
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -1488,13 +1524,8 @@ async function openEmbeddedTmux(name) {
             return false;
           }
         }
-        if (k === 'v') {
-          e.preventDefault();
-          navigator.clipboard?.readText().then((t) => {
-            if (t) { rec.buf = (rec.buf || '') + t; flushRecInput(rec); }
-          }).catch(() => {});
-          return false;
-        }
+        // ⌘V 不在这里处理：WKWebView 会拒绝 navigator.clipboard.readText()，
+        // 由原生层（应用菜单「粘贴」）读 NSPasteboard 后调用 __shiyiPaste 注入
       }
       return true;
     });

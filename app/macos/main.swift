@@ -98,8 +98,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     editMenu.addItem(withTitle: "重做", action: Selector(("redo:")), keyEquivalent: "Z")
     editMenu.addItem(.separator())
     editMenu.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-    editMenu.addItem(withTitle: "拷贝", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-    editMenu.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+    let copyItem = NSMenuItem(title: "拷贝", action: #selector(AppDelegate.copyFromTerminal(_:)), keyEquivalent: "c")
+    copyItem.target = self
+    editMenu.addItem(copyItem)
+    let pasteItem = NSMenuItem(title: "粘贴", action: #selector(AppDelegate.pasteToTerminal(_:)), keyEquivalent: "v")
+    pasteItem.target = self
+    editMenu.addItem(pasteItem)
     editMenu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
     editItem.submenu = editMenu
 
@@ -158,6 +162,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
   }
 
   // MARK: - Server
+
+  // MARK: - 终端剪贴板
+  //
+  // WKWebView 不允许页面自己读剪贴板（navigator.clipboard.readText 会被拒绝），
+  // 所以 ⌘C / ⌘V 都走原生：由 Swift 读写 NSPasteboard，再注入终端。
+  // 焦点不在终端里（搜索框、重命名、配置编辑器等）时，交回系统默认行为。
+
+  @objc func pasteToTerminal(_ sender: Any?) {
+    webView.evaluateJavaScript("window.__shiyiFocusArea ? window.__shiyiFocusArea() : 'input'") { [weak self] result, _ in
+      guard let self = self else { return }
+      guard (result as? String) == "terminal" else {
+        NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
+        return
+      }
+      let text = NSPasteboard.general.string(forType: .string) ?? ""
+      guard !text.isEmpty else { return }
+      self.webView.evaluateJavaScript("window.__shiyiPaste && window.__shiyiPaste(\(Self.jsLiteral(text)))")
+      self.appLog("终端粘贴 \(text.count) 字符")
+    }
+  }
+
+  @objc func copyFromTerminal(_ sender: Any?) {
+    webView.evaluateJavaScript("window.__shiyiFocusArea ? window.__shiyiFocusArea() : 'input'") { [weak self] result, _ in
+      guard let self = self else { return }
+      guard (result as? String) == "terminal" else {
+        NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+        return
+      }
+      self.webView.evaluateJavaScript("window.__shiyiCopySelection ? (window.__shiyiCopySelection() || '') : ''") { value, _ in
+        guard let text = value as? String, !text.isEmpty else {
+          NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+          return
+        }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        self.appLog("终端复制 \(text.count) 字符")
+      }
+    }
+  }
+
+  /// 生成安全的 JS 字符串字面量（引号、换行、反斜杠、U+2028/2029 都要转义）
+  private static func jsLiteral(_ s: String) -> String {
+    var out = "\""
+    for scalar in s.unicodeScalars {
+      switch scalar {
+      case "\"": out += "\\\""
+      case "\\": out += "\\\\"
+      case "\n": out += "\\n"
+      case "\r": out += "\\r"
+      case "\t": out += "\\t"
+      case "\u{2028}": out += "\\u2028"
+      case "\u{2029}": out += "\\u2029"
+      default:
+        if scalar.value < 0x20 {
+          out += String(format: "\\u%04x", scalar.value)
+        } else {
+          out.unicodeScalars.append(scalar)
+        }
+      }
+    }
+    return out + "\""
+  }
 
   private func startServerAndLoad() {
     let resources = Bundle.main.resourcePath ?? ""
