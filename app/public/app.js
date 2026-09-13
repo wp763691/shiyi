@@ -404,14 +404,18 @@ function renderLive() {
     row.ondblclick = (e) => {
       if (e.target.closest('button')) return;
       if (w.tmux) { handleEmbeddedOpen(w.sessionName); return; }
-      if (w.win) { act({ action: 'focus', win: w.win, tab: w.tab }); return; }
       if (w.session?.sessionId) {
-        act({ action: 'resume', sessionId: w.session.sessionId, cwd: w.session.cwd, tool: w.session.tool });
+        // 双击直接把外部会话切换为内置终端（历史保留，原窗口关闭）
+        adoptRunningRow(w, false);
+        return;
+      }
+      if (w.win) {
+        act({ action: 'focus', win: w.win, tab: w.tab });
       } else {
         toast('该会话无法打开内置终端，可用 ⋯ 菜单操作', true);
       }
     };
-    row.title = w.tmux ? '双击在内置终端打开' : '双击聚焦窗口';
+    row.title = w.tmux ? '双击在内置终端打开' : (w.session?.sessionId ? '双击切换到内置终端' : '双击聚焦窗口');
     LIVE.appendChild(row);
   }
 }
@@ -458,7 +462,7 @@ function showRowMenu(anchor, w) {
   }
   const cwd = w.session?.cwd || w.cwd;
   if (cwd) item('打开会话目录', () => act({ action: 'open', reveal: true, path: cwd }));
-  if (w.session?.sessionId) item('转入内置终端', () => adoptRunningRow(w));
+  if (w.session?.sessionId) item('切换到内置终端', () => adoptRunningRow(w));
   item('重命名', () => openRenameDialog(liveRenameKeys(w)[0], liveTitle(w)));
   item('终止会话', () => terminateRow(w), true);
   document.body.appendChild(menu);
@@ -476,6 +480,7 @@ let adopting = false;
 async function adoptIntoEmbedded({ tool, sessionId, cwd, name, pid, terminate }) {
   if (adopting) return null;
   adopting = true;
+  toast('正在切换到内置终端（原窗口将关闭，历史保留）…');
   try {
     const res = await fetch('/api/action', {
       method: 'POST',
@@ -499,13 +504,13 @@ async function adoptIntoEmbedded({ tool, sessionId, cwd, name, pid, terminate })
   }
 }
 
-function adoptRunningRow(w) {
+function adoptRunningRow(w, needConfirm = true) {
   const s = w.session;
   if (!s?.sessionId) return toast('该会话缺少 ID，无法转入', true);
-  if (w.running && w.procPid) {
+  if (w.running && w.procPid && needConfirm) {
     showConfirm(
-      `将「${liveTitle(w)}」转入内置终端？`,
-      '会先结束外部实例（避免两个进程同时写同一份记录），再在 tmux 中恢复同一会话；历史与上下文完整保留。',
+      `切换到内置终端？`,
+      `「${liveTitle(w)}」将在拾忆的内置终端中继续，原窗口随之关闭；对话历史与上下文完整保留，之后随时可以再切回 iTerm。`,
       async () => {
         await adoptIntoEmbedded({
           tool: s.tool, sessionId: s.sessionId, cwd: s.cwd,
@@ -515,7 +520,14 @@ function adoptRunningRow(w) {
     );
     return;
   }
-  adoptIntoEmbedded({ tool: s.tool, sessionId: s.sessionId, cwd: s.cwd, name: s.title });
+  adoptIntoEmbedded({
+    tool: s.tool,
+    sessionId: s.sessionId,
+    cwd: s.cwd,
+    name: s.title,
+    pid: w.procPid,
+    terminate: Boolean(w.running && w.procPid),
+  });
 }
 
 function showSimpleMenu(anchor, items) {
@@ -629,7 +641,7 @@ function renderHistory() {
         fn: () => act({ action: 'open', reveal: true, path: s.cwd }),
       }] : []),
       {
-        label: '转入内置终端（tmux）',
+        label: '切换到内置终端',
         fn: () => adoptIntoEmbedded({ tool: s.tool, sessionId: s.sessionId, cwd: s.cwd, name: s.title }),
       },
       { sep: true },
