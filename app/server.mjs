@@ -189,7 +189,10 @@ async function buildState() {
       }
     }
   } catch { /* 没有 tmux server 时忽略 */ }
-  const bridgeSet = new Set(bridgePids());
+  const bridgeSet = new Set([
+    ...bridgePids(),
+    ...(table.rows || []).filter((r) => /pty_bridge\.py/.test(r.command)).map((r) => r.pid),
+  ]);
   const tableParent = new Map((table.rows || []).map((r) => [r.pid, r.ppid]));
   const isAppClient = (pid) => {
     let cur = pid;
