@@ -600,6 +600,28 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      if (body.action === 'terminate-many') {
+        const items = Array.isArray(body.items) ? body.items : [];
+        let terminated = 0;
+        const failed = [];
+        for (const it of items) {
+          try {
+            if (it.mode === 'tmux') {
+              const tmux2 = await tmuxBin();
+              if (tmux2 && it.name) {
+                await execFileP(tmux2, ['kill-session', '-t', String(it.name)], { timeout: 6000 });
+              }
+            } else if (it.pid) {
+              await terminateProcess(it.pid);
+            }
+            terminated += 1;
+          } catch (e) {
+            failed.push({ name: it.name || it.pid, error: String(e?.message || e) });
+          }
+        }
+        sendJson(res, 200, { ok: true, terminated, failed });
+        return;
+      }
       sendJson(res, 400, { ok: false, error: '未知动作' });
       return;
     }

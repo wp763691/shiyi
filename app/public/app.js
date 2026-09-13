@@ -55,6 +55,8 @@ const STATUS_LEFT = document.getElementById('statusLeft');
 const STATUS_RIGHT = document.getElementById('statusRight');
 const TERM_CLEAR = document.getElementById('termClear');
 const FOCUS_TOGGLE = document.getElementById('focusToggle');
+const MEM_TOTAL = document.getElementById('memTotal');
+const IDLE_RELEASE = document.getElementById('idleRelease');
 const TERM_NEW = document.getElementById('termNew');
 const NEW_BACKDROP = document.getElementById('newBackdrop');
 const NEW_NAME = document.getElementById('newName');
@@ -352,6 +354,10 @@ async function saveRenameDialog() {
 
 function renderLive() {
   const all = liveAll();
+  const totalMem = all.reduce((sum, w) => sum + (w.memMB || 0), 0);
+  MEM_TOTAL.textContent = totalMem
+    ? `内存 ≈ ${totalMem >= 1024 ? `${(totalMem / 1024).toFixed(1)} GB` : `${totalMem} MB`}`
+    : '';
   const windows = liveFiltered();
   LIVE_COUNT.textContent = `${windows.length} / ${all.length}`;
   LIVE.innerHTML = '';
@@ -442,21 +448,6 @@ function terminateRow(w) {
   );
 }
 
-function releaseRow(w) {
-  showConfirm(
-    `释放内存：结束「${liveTitle(w)}」？`,
-    `该会话约占 ${w.memMB || 0} MB。结束会同时回收其子进程（MCP 等）；对话记录完整保留，需要时可在历史中随时恢复，或再次切换到内置终端。`,
-    async () => {
-      await act({
-        action: 'terminate',
-        mode: w.tmux ? 'tmux' : 'process',
-        name: w.sessionName,
-        pid: w.procPid,
-      });
-    }
-  );
-}
-
 function closeRowMenu() {
   document.querySelectorAll('.row-menu').forEach((m) => m.remove());
 }
@@ -481,7 +472,6 @@ function showRowMenu(anchor, w) {
   if (cwd) item('打开会话目录', () => act({ action: 'open', reveal: true, path: cwd }));
   if (w.session?.sessionId) item('切换到内置终端', () => adoptRunningRow(w));
   item('重命名', () => openRenameDialog(liveRenameKeys(w)[0], liveTitle(w)));
-  if (w.memMB) item('释放内存（结束会话，可恢复）', () => releaseRow(w));
   item('终止会话', () => terminateRow(w), true);
   document.body.appendChild(menu);
   const r = anchor.getBoundingClientRect();
@@ -520,6 +510,46 @@ async function adoptIntoEmbedded({ tool, sessionId, cwd, name, pid, terminate })
   } finally {
     adopting = false;
   }
+}
+
+const IDLE_MS = 30 * 60 * 1000;
+
+async function releaseIdleSessions() {
+  const now = Date.now();
+  const idle = liveAll()
+    .map((w) => ({ w, ts: w.session?.lastTs || w.createdMs || 0 }))
+    .filter((x) => x.ts && now - x.ts > IDLE_MS);
+  if (!idle.length) {
+    toast('没有空闲超过 30 分钟的会话');
+    return;
+  }
+  const mem = idle.reduce((sum, x) => sum + (x.w.memMB || 0), 0);
+  const lines = idle.map((x) => `· ${liveTitle(x.w)}（${x.w.memMB || 0} MB）`).join('\n');
+  showConfirm(
+    `释放 ${idle.length} 个空闲会话？`,
+    `预计释放约 ${mem} MB。会话记录完整保留，可随时从历史恢复：\n${lines}`,
+    async () => {
+      try {
+        const res = await fetch('/api/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'terminate-many',
+            items: idle.map((x) => ({
+              mode: x.w.tmux ? 'tmux' : 'process',
+              name: x.w.sessionName || '',
+              pid: x.w.procPid || null,
+            })),
+          }),
+        });
+        const data = await res.json();
+        toast(data.ok ? `已释放 ${data.terminated} 个会话` : '释放失败', !data.ok);
+      } catch (e) {
+        toast(`释放失败：${e.message}`, true);
+      }
+      await refresh();
+    }
+  );
 }
 
 function adoptRunningRow(w, needConfirm = true) {
@@ -1896,6 +1926,7 @@ SKILL_MORE.addEventListener('click', (e) => {
   ]);
 });
 FOCUS_TOGGLE.addEventListener('click', () => setFocusMode(!focusMode));
+IDLE_RELEASE.addEventListener('click', releaseIdleSessions);
 document.addEventListener('mousemove', (e) => {
   if (!focusMode) return;
   if (e.clientY < 8) document.body.classList.add('top-hover');
