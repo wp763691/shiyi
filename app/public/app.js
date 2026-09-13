@@ -1151,6 +1151,35 @@ function renderTermTabs() {
   info.push(`tabs=${Math.round(tabsRect.width)}x${Math.round(tabsRect.height)} stage=${Math.round(stageRect.width)}x${Math.round(stageRect.height)}`);
   if (wbRect) info.push(`wb=${Math.round(wbRect.width)}x${Math.round(wbRect.height)}`);
   dbg(`几何: ${info.join(' | ')}`);
+  persistOpenTabs();
+}
+
+function persistOpenTabs() {
+  try {
+    localStorage.setItem('shiyi.openTabs', JSON.stringify(termSessions.map((r) => r.name)));
+    localStorage.setItem('shiyi.activeTab', activeTermName || '');
+  } catch { /* 忽略 */ }
+}
+
+async function restoreOpenTabs() {
+  let names = [];
+  let active = '';
+  try {
+    names = JSON.parse(localStorage.getItem('shiyi.openTabs') || '[]');
+    active = localStorage.getItem('shiyi.activeTab') || '';
+  } catch { /* 忽略 */ }
+  if (!Array.isArray(names) || !names.length) return;
+  const available = new Set((state.tmuxSessions || []).map((t) => t.name));
+  for (const name of names.slice(0, 8)) {
+    if (!available.has(name)) continue; // tmux 会话已不存在则跳过
+    try {
+      await openEmbeddedTmux(name);
+      await new Promise((r) => setTimeout(r, 250));
+    } catch { /* 单个失败不影响其他 */ }
+  }
+  if (active && termSessions.some((r) => r.name === active)) {
+    activateTerminal(active);
+  }
 }
 
 function activateTerminal(name) {
@@ -1861,7 +1890,12 @@ async function refresh() {
   REFRESH.textContent = `更新于 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`;
   if (state.demo && !window.__demoOpened) {
     window.__demoOpened = true;
+    window.__tabsRestored = true;
     setTimeout(() => openEmbeddedTmux('shiyi-demo'), 300);
+  }
+  if (!state.demo && !window.__tabsRestored) {
+    window.__tabsRestored = true;
+    setTimeout(() => { restoreOpenTabs().catch(() => {}); }, 500);
   }
 }
 
