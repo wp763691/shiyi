@@ -124,6 +124,10 @@ select {
   padding: 14px 16px; border-radius: 11px;
 }
 .row:hover { background: #f7f8fb; }
+.row.ctx-warn { background: #fff8ec; }
+.row.ctx-warn:hover { background: #fdf1dd; }
+.row.ctx-danger { background: #fdeceb; }
+.row.ctx-danger:hover { background: #fbdfdd; }
 .hist-row + .hist-row { border-top: 1px solid var(--line-soft); }
 .livedot {
   width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; margin-top: 8px;

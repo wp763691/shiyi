@@ -267,7 +267,7 @@ function sessionMetaById(sessionId) {
 function ctxBadge(meta) {
   if (!meta || !meta.ctxTokens || !meta.ctxMax) return null;
   const pct = Math.min(999, Math.round((meta.ctxTokens / meta.ctxMax) * 100));
-  const level = pct >= 90 ? 'danger' : pct >= 80 ? 'warn' : 'ok';
+  const level = ctxLevel(meta);
   const cls = level === 'danger' ? 'chip ctx ctx-danger' : level === 'warn' ? 'chip ctx ctx-warn' : 'chip ctx';
   const chip = el('span', cls, `上下文 ${pct}%`);
   const d = meta.ctxDetail || {};
@@ -277,6 +277,12 @@ function ctxBadge(meta) {
     `输出 ${(d.output || 0).toLocaleString()}${meta.model ? ` · 模型 ${meta.model}` : ''}`,
   ].join('\n');
   return chip;
+}
+
+function ctxLevel(meta) {
+  if (!meta?.ctxTokens || !meta?.ctxMax) return 'ok';
+  const pct = (meta.ctxTokens / meta.ctxMax) * 100;
+  return pct >= 90 ? 'danger' : pct >= 80 ? 'warn' : 'ok';
 }
 
 const ctxWarned = new Map();
@@ -412,6 +418,9 @@ function renderLive() {
 
   for (const w of windows) {
     const row = el('div', 'row live-row');
+    const rowMeta = sessionMetaById(w.session?.sessionId);
+    const rowLevel = ctxLevel(rowMeta);
+    if (rowLevel !== 'ok') row.classList.add(`ctx-${rowLevel}`);
     row.append(el('span', `livedot${w.running ? ' on' : ''}`));
 
     const main = el('div', 'row-main');
@@ -420,7 +429,7 @@ function renderLive() {
     if (w.tmux) line1.append(el('span', 'tag tmux-tag', 'tmux'));
     const chip = toolChip(w);
     if (chip) line1.append(el('span', chip[0], chip[1]));
-    const ctxChip = ctxBadge(sessionMetaById(w.session?.sessionId));
+    const ctxChip = ctxBadge(rowMeta);
     if (ctxChip) line1.append(ctxChip);
     main.appendChild(line1);
 
@@ -748,6 +757,8 @@ function renderHistory() {
 
   for (const s of list) {
     const row = el('div', 'row hist-row');
+    const level = ctxLevel(s);
+    if (level !== 'ok') row.classList.add(`ctx-${level}`);
     const main = el('div', 'row-main');
 
     const line1 = el('div', 'row-title');
