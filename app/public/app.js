@@ -444,7 +444,8 @@ function terminateRow(w) {
         name: w.sessionName,
         pid: w.procPid,
       });
-    }
+    },
+    '确认终止'
   );
 }
 
@@ -548,7 +549,8 @@ async function releaseIdleSessions() {
         toast(`释放失败：${e.message}`, true);
       }
       await refresh();
-    }
+    },
+    '确认释放'
   );
 }
 
@@ -564,7 +566,8 @@ function adoptRunningRow(w, needConfirm = true) {
           tool: s.tool, sessionId: s.sessionId, cwd: s.cwd,
           name: s.title, pid: w.procPid, terminate: true,
         });
-      }
+      },
+      '确认切换'
     );
     return;
   }
@@ -703,7 +706,8 @@ function renderHistory() {
             `会话文件会移到 ${where}（可手动找回），并从面板和恢复列表移除。此操作不可在面板内撤销。`,
             async () => {
               await act({ action: 'delete', tool: s.tool, sessionId: s.sessionId, path: s.path });
-            }
+            },
+            '确认删除'
           );
         },
       },
@@ -798,7 +802,8 @@ function renderSkills() {
         `技能目录会移到 ${where}（可手动找回），并从技能库移除。此操作不可在面板内撤销。`,
         async () => {
           await act({ action: 'delete-skill', tool: s.tool, path: s.folder });
-        }
+        },
+        '确认删除'
       );
     };
     const moreBtn = el('button', 'btn small more-btn', '⋯');
@@ -932,7 +937,8 @@ function renderConfig() {
           `文件会移到 ${where}（可手动找回）。此操作不可在面板内撤销。`,
           async () => {
             await act({ action: 'delete-rule', path: file });
-          }
+          },
+          '确认删除'
         );
       };
       actions.append(delBtn);
@@ -1790,9 +1796,10 @@ function showResumeModal(text, command) {
   MODAL_CLOSE.onclick = hideModal;
 }
 
-function showConfirm(title, text, onOk) {
+function showConfirm(title, text, onOk, okLabel = '确认') {
   MODAL_TITLE.textContent = title;
   MODAL_TEXT.textContent = text;
+  MODAL_OK.textContent = okLabel;
   MODAL_COMMAND.hidden = true;
   MODAL_COPY.hidden = true;
   MODAL_OK.hidden = false;
@@ -1930,7 +1937,7 @@ SKILL_MORE.addEventListener('click', (e) => {
       danger: true,
       fn: () => showConfirm('清除全部译文缓存？', '只是删除本地翻译缓存，技能文件不受影响；下次可重新翻译。', async () => {
         await act({ action: 'clear-skill-translations' });
-      }),
+      }, '确认清除'),
     },
   ]);
 });
