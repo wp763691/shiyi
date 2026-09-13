@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { access, writeFile, chmod, readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 
 const execFileP = promisify(execFile);
 const binCache = new Map();
@@ -232,8 +233,9 @@ export async function resumeSession(sessionId, cwd, tool = 'claude') {
   const bin = await resolveBin(tool === 'codex' ? 'codex' : 'claude');
   const args = tool === 'codex' ? `resume ${shq(sessionId)}` : `--resume ${shq(sessionId)}`;
   const log = '/tmp/zyin-resume.log';
-  const dir = shq(cwd || process.env.HOME || '/');
-  const manual = buildManualCommand(cwd, tool, sessionId);
+  const dirExists = Boolean(cwd) && existsSync(cwd);
+  const dir = shq(dirExists ? cwd : (process.env.HOME || '/'));
+  const manual = buildManualCommand(dirExists ? cwd : '', tool, sessionId);
 
   // 第一优先：iTerm2 Python API（在当前 iTerm 窗口新开标签）
   try {

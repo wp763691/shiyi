@@ -718,6 +718,7 @@ function renderHistory() {
 
     const meta = el('div', 'row-meta');
     meta.append(el('span', 'chip path', s.dirName));
+    if (s.cwdMissing) meta.append(el('span', 'chip mem heavy', '目录已失效'));
     meta.append(el('span', 'chip', fmtDate(s.lastTs)));
     meta.append(el('span', 'chip', `${s.exchanges} 轮`));
     meta.append(el('span', 'chip', `${s.mb} MB`));
@@ -739,7 +740,7 @@ function renderHistory() {
         label: '复制恢复命令',
         fn: () => {
           const bin = s.tool === 'codex' ? 'codex' : 'claude';
-          const cmd = s.cwd
+          const cmd = s.cwd && !s.cwdMissing
             ? `cd '${s.cwd}' && ${bin} ${s.tool === 'codex' ? 'resume' : '--resume'} ${s.sessionId}`
             : `${bin} ${s.tool === 'codex' ? 'resume' : '--resume'} ${s.sessionId}`;
           navigator.clipboard?.writeText(cmd)

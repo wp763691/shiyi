@@ -251,7 +251,10 @@ function baseMeta(fp, s, tool) {
 function finalizeMeta(meta) {
   if (meta.firstTitle) meta.title = meta.firstTitle;
   if (!meta.title) meta.title = meta.lastUserText ? meta.lastUserText.slice(0, 42) : '未命名会话';
+  // 目录被重命名时，用"最近一次写入的 cwd"（存在则直接采用）
+  if (meta.cwdLatest && existsSync(meta.cwdLatest)) meta.cwd = meta.cwdLatest;
   meta.cwd = mapCwd(meta.cwd);
+  meta.cwdMissing = Boolean(meta.cwd) && !existsSync(meta.cwd);
   meta.dirName = meta.cwd ? shortPath(meta.cwd) : path.basename(path.dirname(meta.path));
   meta.exchanges = meta.assistantTurns;
   if (!meta.lastTs) meta.lastTs = meta.fileMtime;
@@ -280,7 +283,10 @@ async function parseClaudeFile(fp, s) {
         if (meta.lastTs === null || t > meta.lastTs) meta.lastTs = t;
       }
     }
-    if (!meta.cwd && typeof o.cwd === 'string') meta.cwd = o.cwd;
+    if (typeof o.cwd === 'string' && o.cwd) {
+      if (!meta.cwd) meta.cwd = o.cwd;
+      meta.cwdLatest = o.cwd; // 最近一次记录的 cwd（目录重命名后会变成新路径）
+    }
     if (!meta.branch && typeof o.gitBranch === 'string' && o.gitBranch) meta.branch = o.gitBranch;
 
     switch (o.type) {
@@ -336,7 +342,10 @@ async function parseCodexFile(fp, s, titles) {
     }
     const pl = o.payload || {};
     if (o.type === 'session_meta' || o.type === 'turn_context') {
-      if (!meta.cwd && typeof pl.cwd === 'string') meta.cwd = pl.cwd;
+      if (typeof pl.cwd === 'string' && pl.cwd) {
+        if (!meta.cwd) meta.cwd = pl.cwd;
+        meta.cwdLatest = pl.cwd;
+      }
     } else if (o.type === 'event_msg' && pl.type === 'user_message') {
       const texts = [];
       if (Array.isArray(pl.text_elements)) {
