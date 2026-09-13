@@ -89,6 +89,11 @@ Shiyi/
 
 ## 快速开始
 
+### 开发文档
+
+- [AGENTS.md](./AGENTS.md)：给 AI / 开发者的速查（目录、命令、关键不变量）
+- [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md)：完整开发文档（架构、数据流、API、已知坑、发布流程）
+
 ### 开发模式（浏览器面板）
 
 ```bash

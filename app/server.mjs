@@ -39,6 +39,11 @@ import {
   bridgePids,
 } from './lib/termproxy.mjs';
 
+// .app 后台启动的进程缺少 LANG/LC_ALL，tmux 会把中文会话名降级为下划线
+// （attach 时报 can't find session）。此处兜底注入 UTF-8，确保 tmux 子进程正确编码。
+if (!process.env.LC_ALL) process.env.LC_ALL = 'zh_CN.UTF-8';
+if (!process.env.LANG) process.env.LANG = 'zh_CN.UTF-8';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const PORT = Number(process.env.PORT || 8787);
