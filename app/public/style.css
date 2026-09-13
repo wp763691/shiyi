@@ -211,6 +211,8 @@ select {
   border-radius: 9px; padding: 13px 15px; font-family: var(--mono); font-size: 12px;
   color: var(--text); overflow-wrap: anywhere; margin-bottom: 18px; user-select: all;
 }
+.modal-code[hidden] { display: none; }
+.modal-actions .btn[hidden] { display: none; }
 .modal-actions { display: flex; gap: 9px; justify-content: flex-end; }
 
 /* 内置终端 */
