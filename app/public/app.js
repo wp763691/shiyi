@@ -955,7 +955,7 @@ function activateTerminal(name) {
 
 function termTheme() {
   return {
-    background: 'rgba(0,0,0,0)',
+    background: '#ffffff',
     foreground: '#1d2430',
     cursor: '#3455d1',
     cursorAccent: '#ffffff',
@@ -998,7 +998,6 @@ async function openEmbeddedTmux(name) {
     fontFamily: '"SF Mono", Menlo, Monaco, monospace',
     fontSize: 13,
     cursorBlink: true,
-    allowTransparency: true,
     macOptionClickForcesSelection: true,
     theme: termTheme(),
   });
