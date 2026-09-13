@@ -164,6 +164,7 @@ function fmtDate(ts) {
 function liveTitle(w) {
   const custom = customName(liveRenameKeys(w));
   if (custom) return custom;
+  if (w.tmux) return w.name || w.title || 'tmux';
   if (w.session?.title && w.session.title !== '未命名会话') return w.session.title;
   if (w.title) return w.title;
   if (w.tool === 'bash') return 'Bash 会话';
@@ -205,7 +206,7 @@ function liveAll() {
     title: t.name,
     name: t.name,
     sessionName: t.name,
-    session: { title: t.name, tool: t.tool, cwd: t.cwd },
+    session: t.session || { title: t.name, tool: t.tool, cwd: t.cwd },
     cwd: t.cwd,
     attached: t.attached,
     pane: `${t.window}.${t.pane}`,
@@ -478,7 +479,10 @@ function showSimpleMenu(anchor, items) {
 
 function baseHistory() {
   const runningIds = new Set(
-    (state.windows || []).map((w) => w.session?.sessionId).filter(Boolean)
+    [
+      ...(state.windows || []).map((w) => w.session?.sessionId),
+      ...(state.tmuxSessions || []).map((t) => t.session?.sessionId),
+    ].filter(Boolean)
   );
   return (state.sessions || []).filter((s) => !runningIds.has(s.sessionId));
 }

@@ -180,7 +180,16 @@ async function buildState() {
     agents,
     commands,
     hooks,
-    tmuxSessions: tmuxAgents.items || [],
+    tmuxSessions: (tmuxAgents.items || []).map((t) => {
+      const proc = (procsRes.procs || []).find(
+        (p) => normalizeTty(p.tty) === normalizeTty(t.tty)
+      );
+      const s = activeForProc(proc, t.tool);
+      return {
+        ...t,
+        session: s ? { sessionId: s.sessionId, tool: s.tool, title: s.title, lastTs: s.lastTs, cwd: s.cwd } : null,
+      };
+    }),
     configFiles,
     skillTranslations: await loadTranslations(),
     translationStats: await translationStats(skills),
