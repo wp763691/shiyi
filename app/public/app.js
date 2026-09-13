@@ -458,6 +458,7 @@ function showRowMenu(anchor, w) {
   }
   const cwd = w.session?.cwd || w.cwd;
   if (cwd) item('打开会话目录', () => act({ action: 'open', reveal: true, path: cwd }));
+  if (w.session?.sessionId) item('转入内置终端', () => adoptRunningRow(w));
   item('重命名', () => openRenameDialog(liveRenameKeys(w)[0], liveTitle(w)));
   item('终止会话', () => terminateRow(w), true);
   document.body.appendChild(menu);
@@ -468,6 +469,47 @@ function showRowMenu(anchor, w) {
     document.addEventListener('click', closeRowMenu, { once: true });
     document.addEventListener('keydown', closeRowMenu, { once: true });
   }, 0);
+}
+
+async function adoptIntoEmbedded({ tool, sessionId, cwd, name, pid, terminate }) {
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'adopt-session', tool, sessionId, cwd, name, pid, terminate }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`转入失败：${data.error || ''}`, true);
+      return null;
+    }
+    toast(`已转入内置终端：${data.name}`);
+    await refresh();
+    openEmbeddedTmux(data.name);
+    return data.name;
+  } catch (e) {
+    toast(`转入失败：${e.message}`, true);
+    return null;
+  }
+}
+
+function adoptRunningRow(w) {
+  const s = w.session;
+  if (!s?.sessionId) return toast('该会话缺少 ID，无法转入', true);
+  if (w.running && w.procPid) {
+    showConfirm(
+      `将「${liveTitle(w)}」转入内置终端？`,
+      '会先结束外部实例（避免两个进程同时写同一份记录），再在 tmux 中恢复同一会话；历史与上下文完整保留。',
+      async () => {
+        await adoptIntoEmbedded({
+          tool: s.tool, sessionId: s.sessionId, cwd: s.cwd,
+          name: s.title, pid: w.procPid, terminate: true,
+        });
+      }
+    );
+    return;
+  }
+  adoptIntoEmbedded({ tool: s.tool, sessionId: s.sessionId, cwd: s.cwd, name: s.title });
 }
 
 function showSimpleMenu(anchor, items) {
@@ -580,6 +622,10 @@ function renderHistory() {
         label: '打开项目目录',
         fn: () => act({ action: 'open', reveal: true, path: s.cwd }),
       }] : []),
+      {
+        label: '转入内置终端（tmux）',
+        fn: () => adoptIntoEmbedded({ tool: s.tool, sessionId: s.sessionId, cwd: s.cwd, name: s.title }),
+      },
       { sep: true },
       {
         label: '删除会话',

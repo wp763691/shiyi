@@ -525,6 +525,49 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      if (body.action === 'adopt-session') {
+        try {
+          const tool = body.tool === 'codex' ? 'codex' : 'claude';
+          const sid = String(body.sessionId || '').trim();
+          if (!/^[0-9a-f-]{16,}$/i.test(sid)) {
+            sendJson(res, 400, { ok: false, error: '缺少有效的会话 ID' });
+            return;
+          }
+          const tmux = await tmuxBin();
+          if (!tmux) {
+            sendJson(res, 400, { ok: false, error: '未安装 tmux，请先运行：brew install tmux' });
+            return;
+          }
+          let dir = String(body.cwd || '').trim();
+          if (dir) {
+            const st = await stat(dir).catch(() => null);
+            if (!st || !st.isDirectory()) dir = os.homedir();
+          } else {
+            dir = os.homedir();
+          }
+          // 若原实例仍在运行，先终止，避免两个进程写同一份 transcript
+          if (body.terminate && body.pid) {
+            await terminateProcess(body.pid);
+            await new Promise((r) => setTimeout(r, 900));
+          }
+          const base = normalizeSessionName(body.name || `${tool}-${sid.slice(0, 8)}`) || `${tool}-${sid.slice(0, 8)}`;
+          let name = base;
+          for (let i = 2; i < 20; i += 1) {
+            try {
+              await execFileP(tmux, ['has-session', '-t', name], { timeout: 4000 });
+              name = `${base}-${i}`; // 已存在则换名
+            } catch {
+              break; // 不存在，可用
+            }
+          }
+          const cmd = tool === 'codex' ? `codex resume ${sid}` : `claude --resume ${sid}`;
+          await execFileP(tmux, ['new-session', '-d', '-s', name, '-c', dir, cmd], { timeout: 8000 });
+          sendJson(res, 200, { ok: true, name, dir, tool });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
       sendJson(res, 400, { ok: false, error: '未知动作' });
       return;
     }
