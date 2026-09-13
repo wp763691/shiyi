@@ -331,6 +331,7 @@ body[data-tab='config'] .brand-text p { display: block; }
 .mini-panel { display: flex; flex-direction: column; min-height: 0; flex: 0 0 auto; max-height: 42%; }
 .wb-drawer .mini-panel + .mini-panel { flex: 1 1 auto; max-height: none; }
 .mini-panel.collapsed { flex: 0 0 auto; max-height: none; }
+.wb-drawer .mini-panel + .mini-panel.collapsed { margin-top: auto; }
 .mini-panel.collapsed .rows.compact { display: none; }
 .mini-panel + .mini-panel { border-top: 1px solid var(--line-soft); }
 .mini-head {
