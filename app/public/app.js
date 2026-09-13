@@ -1641,6 +1641,7 @@ async function refresh() {
   renderHistory();
   renderSkills();
   renderConfig();
+  renderTermTabs();
   TAB_SESS_COUNT.textContent = baseHistory().length;
   TAB_SKILL_COUNT.textContent = (state.skills || []).length;
   TAB_CONFIG_COUNT.textContent =
