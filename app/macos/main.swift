@@ -134,13 +134,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     // Finder 启动的应用 PATH 很干净，这里显式补全常见 Node 路径
     var env = ProcessInfo.processInfo.environment
     env["HOME"] = NSHomeDirectory()
-    env["PATH"] =
-      "\(NSHomeDirectory())/.nvm/versions/node/v25.5.0/bin:" +
-      "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
     server = Process()
-    server?.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    server?.arguments = ["node", serverFile]
+    // 通过登录 shell 启动，确保能找到用户通过 Homebrew / nvm 安装的 node
+    server?.executableURL = URL(fileURLWithPath: "/bin/bash")
+    server?.arguments = ["-lc", "exec node \"$0\"", serverFile]
     server?.currentDirectoryURL = URL(fileURLWithPath: serverDir)
     server?.environment = env
 
