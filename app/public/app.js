@@ -1237,11 +1237,9 @@ async function openEmbeddedTmux(name) {
   term.onData((d) => queueRecInput(rec, d));
   try {
     term.attachCustomKeyEventHandler((e) => {
-      // 显式处理问号：部分键盘布局下 xterm 在 WKWebView 中会丢失 Shift+/ 的映射
-      if (e.type === 'keydown' && (e.key === '?' || e.key === '？')) {
-        queueRecInput(rec, e.key);
-        return false;
-      }
+      if (e.type !== 'keydown') return true;
+      // 输入法组合过程中交给 xterm 正常处理
+      if (e.isComposing || e.keyCode === 229) return true;
       if (e.type === 'keydown' && (e.metaKey || e.ctrlKey) && !e.altKey) {
         const k = e.key.toLowerCase();
         if (k === 'c') {
@@ -1259,6 +1257,12 @@ async function openEmbeddedTmux(name) {
           }).catch(() => {});
           return false;
         }
+      }
+      // 所有可打印字符直通（涵盖 ! @ # $ % ^ & * ( ) _ + { } | : " < > ? ~ 等，
+      // 以及 Shift/Option 组合产生的字符），规避 WKWebView 下的键位映射丢失
+      if (!e.metaKey && !e.ctrlKey && typeof e.key === 'string' && [...e.key].length === 1) {
+        queueRecInput(rec, e.key);
+        return false;
       }
       return true;
     });
