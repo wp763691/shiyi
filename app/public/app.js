@@ -47,7 +47,7 @@ const MODAL_CLOSE = document.getElementById('modalClose');
 const RAIL_TOGGLE = document.getElementById('railToggle');
 const WB_DRAWER = document.getElementById('wbDrawer');
 const DRAWER_RESIZER = document.getElementById('drawerResizer');
-const DRAWER_CLOSE = document.getElementById('drawerClose');
+const DRAWER_MORE = document.getElementById('drawerMore');
 const TERM_TABS = document.getElementById('termTabs');
 const TERM_STAGE = document.getElementById('termStage');
 const TERM_EMPTY = document.getElementById('termEmpty');
@@ -57,8 +57,6 @@ const TERM_CLEAR = document.getElementById('termClear');
 const TERM_HISTORY = document.getElementById('termHistory');
 const FOCUS_TOGGLE = document.getElementById('focusToggle');
 const MEM_TOTAL = document.getElementById('memTotal');
-const IDLE_RELEASE = document.getElementById('idleRelease');
-const OPEN_MODE_BTN = document.getElementById('openModeBtn');
 const TERM_NEW = document.getElementById('termNew');
 const NEW_BACKDROP = document.getElementById('newBackdrop');
 const NEW_NAME = document.getElementById('newName');
@@ -497,17 +495,8 @@ function getOpenMode() {
 
 function setOpenMode(mode) {
   try { localStorage.setItem('shiyi.openMode', mode); } catch { /* 忽略 */ }
-  updateOpenModeBtn();
   renderLive();
   renderHistory();
-}
-
-function updateOpenModeBtn() {
-  const embedded = getOpenMode() === 'embedded';
-  OPEN_MODE_BTN.textContent = embedded ? '打开：内置' : '打开：iTerm';
-  OPEN_MODE_BTN.title = embedded
-    ? '默认在拾忆内置终端打开（点击改为 iTerm）'
-    : '默认在 iTerm 打开（点击改为内置终端）';
 }
 
 // 运行中的会话：按偏好打开
@@ -2031,7 +2020,18 @@ for (const btn of document.querySelectorAll('[data-search]')) {
   });
 }
 RAIL_TOGGLE.addEventListener('click', () => setDrawer(!drawerOpen));
-DRAWER_CLOSE.addEventListener('click', () => setDrawer(false));
+function openDrawerMenu(anchor) {
+  const embedded = getOpenMode() === 'embedded';
+  showSimpleMenu(anchor, [
+    { label: '打开方式：内置终端', check: embedded, fn: () => { setOpenMode('embedded'); toast('「打开」将使用内置终端'); } },
+    { label: '打开方式：iTerm 窗口', check: !embedded, fn: () => { setOpenMode('iterm'); toast('「打开」将使用 iTerm'); } },
+    { sep: true },
+    { label: '释放空闲内存（>30 分钟）', fn: () => releaseIdleSessions() },
+    { label: '收起会话列表 ⌘L', fn: () => setDrawer(false) },
+  ]);
+}
+DRAWER_MORE.addEventListener('click', (e) => openDrawerMenu(e.currentTarget));
+MEM_TOTAL.addEventListener('click', (e) => openDrawerMenu(e.currentTarget));
 // 抽屉宽度拖拽
 function applyDrawerWidth(px) {
   const w = Math.max(240, Math.min(760, Math.round(px)));
@@ -2083,12 +2083,6 @@ SKILL_MORE.addEventListener('click', (e) => {
   ]);
 });
 FOCUS_TOGGLE.addEventListener('click', () => setFocusMode(!focusMode));
-IDLE_RELEASE.addEventListener('click', releaseIdleSessions);
-OPEN_MODE_BTN.addEventListener('click', () => {
-  const next = getOpenMode() === 'embedded' ? 'iterm' : 'embedded';
-  setOpenMode(next);
-  toast(next === 'embedded' ? '「打开」默认使用内置终端' : '「打开」默认使用 iTerm');
-});
 document.addEventListener('mousemove', (e) => {
   if (!focusMode) return;
   if (e.clientY < 8) document.body.classList.add('top-hover');
@@ -2177,7 +2171,6 @@ for (const btn of SKILL_SCOPE_BTNS) {
 DIR_FILTER.addEventListener('change', renderHistory);
 
 refresh();
-updateOpenModeBtn();
 activateTab(location.hash.replace('#', '') || (() => { try { return localStorage.getItem('shiyi.tab'); } catch { return null; } })() || 'sessions');
 if (location.hash === '#mcp') {
   activateTab('config');

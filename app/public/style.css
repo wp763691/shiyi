@@ -359,7 +359,12 @@ body.resizing-drawer { cursor: col-resize; user-select: none; }
   background: var(--panel);
 }
 .drawer-head strong { font-size: 13px; letter-spacing: 0.03em; }
-.drawer-head .mem-total { margin-left: auto; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.drawer-head .mem-total {
+  margin-left: auto; font-size: 11px; color: var(--muted);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  cursor: pointer; padding: 2px 6px; border-radius: 6px;
+}
+.drawer-head .mem-total:hover { background: var(--accent-soft); color: var(--accent); }
 .drawer-actions { display: inline-flex; gap: 6px; }
 .btn.primary-ghost { color: var(--accent); border-color: rgba(52, 85, 209, 0.35); background: var(--accent-soft); }
 .btn.primary-ghost:hover { background: rgba(52, 85, 209, 0.14); }
