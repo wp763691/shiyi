@@ -88,6 +88,13 @@ export function closeTerminal(id) {
   return { ok: true };
 }
 
+export function closeAllTerminals() {
+  for (const rec of sessions.values()) {
+    try { rec.child.kill('SIGKILL'); } catch { /* 忽略 */ }
+  }
+  sessions.clear();
+}
+
 export function attachStream(id, res) {
   const rec = sessions.get(id);
   if (!rec || !rec.alive) {

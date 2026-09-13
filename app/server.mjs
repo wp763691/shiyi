@@ -35,6 +35,7 @@ import {
   resizeTerminal,
   closeTerminal,
   attachStream,
+  closeAllTerminals,
 } from './lib/termproxy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -661,3 +662,12 @@ server.listen(PORT, HOST, () => {
   console.log(`拾忆服务已启动: http://${HOST}:${PORT}`);
   console.log('按 Ctrl+C 停止');
 });
+
+// 优雅退出：清理内置终端的 PTY 桥（tmux 会话本身保留，继续在后台运行）
+function shutdown() {
+  try { closeAllTerminals(); } catch { /* 忽略 */ }
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 800);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
