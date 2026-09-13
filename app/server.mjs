@@ -36,6 +36,7 @@ import {
   closeTerminal,
   attachStream,
   closeAllTerminals,
+  bridgePids,
 } from './lib/termproxy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -174,6 +175,31 @@ async function buildState() {
     matchedTtys.add(tty);
   }
 
+  // tmux 客户端归属（用于提示"多个连接方"）
+  const clientMap = new Map();
+  try {
+    const tmux = await tmuxBin();
+    if (tmux) {
+      const { stdout } = await execFileP(tmux, ['list-clients', '-F', '#{client_session}|#{client_tty}|#{client_pid}'], { timeout: 5000 });
+      for (const line of stdout.split('\n')) {
+        const [session, tty, pid] = line.split('|');
+        if (!session) continue;
+        if (!clientMap.has(session)) clientMap.set(session, []);
+        clientMap.get(session).push({ tty, pid: Number(pid) || null });
+      }
+    }
+  } catch { /* 没有 tmux server 时忽略 */ }
+  const bridgeSet = new Set(bridgePids());
+  const tableParent = new Map((table.rows || []).map((r) => [r.pid, r.ppid]));
+  const isAppClient = (pid) => {
+    let cur = pid;
+    for (let i = 0; i < 8 && cur; i += 1) {
+      if (bridgeSet.has(cur)) return true;
+      cur = tableParent.get(cur);
+    }
+    return false;
+  };
+
   return {
     sessions,
     windows: windows.filter((w) => w.running || w.session),
@@ -206,9 +232,12 @@ async function buildState() {
         memMB += treeRssMB(root.pid, table);
       }
       await ensureTmuxScrollOptions(t.name);
+      const clients = (clientMap.get(t.name) || []).map((c) => ({ ...c, isApp: isAppClient(c.pid) }));
       return {
         ...t,
         memMB,
+        clients,
+        clientCount: clients.length,
         session: s ? { sessionId: s.sessionId, tool: s.tool, title: s.title, lastTs: s.lastTs, cwd: s.cwd } : null,
       };
     })),
@@ -623,6 +652,28 @@ const server = http.createServer(async (req, res) => {
           }
         }
         sendJson(res, 200, { ok: true, terminated, failed });
+        return;
+      }
+      if (body.action === 'detach-clients') {
+        try {
+          const tmux = await tmuxBin();
+          if (!tmux) {
+            sendJson(res, 400, { ok: false, error: '未安装 tmux' });
+            return;
+          }
+          const ttys = (Array.isArray(body.ttys) ? body.ttys : [])
+            .filter((t) => /^\/dev\/ttys\d+$/.test(String(t)));
+          let detached = 0;
+          for (const tty of ttys) {
+            try {
+              await execFileP(tmux, ['detach-client', '-t', tty], { timeout: 5000 });
+              detached += 1;
+            } catch { /* 已断开 */ }
+          }
+          sendJson(res, 200, { ok: true, detached });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
         return;
       }
       sendJson(res, 400, { ok: false, error: '未知动作' });

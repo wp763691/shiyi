@@ -96,6 +96,11 @@ export function closeAllTerminals() {
   sessions.clear();
 }
 
+// 供服务端识别"哪个 tmux 客户端属于拾忆内置终端"
+export function bridgePids() {
+  return [...sessions.values()].map((r) => r.child?.pid).filter(Boolean);
+}
+
 export function attachStream(id, res) {
   const rec = sessions.get(id);
   if (!rec || !rec.alive) {

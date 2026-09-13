@@ -228,6 +228,8 @@ function liveAll() {
     pane: `${t.window}.${t.pane}`,
     createdMs: t.createdMs || 0,
     memMB: t.memMB || 0,
+    clients: t.clients || [],
+    clientCount: t.clientCount || 0,
   }));
   const all = [...windows, ...tmux];
   const pins = livePins();
@@ -391,6 +393,12 @@ function renderLive() {
     if (w.session?.cwd) meta.append(el('span', 'chip path', w.session.cwd));
     if (w.session?.lastTs) meta.append(el('span', 'chip', fmtRel(w.session.lastTs) + '活跃'));
     if (w.memMB) meta.append(el('span', `chip mem${w.memMB >= 700 ? ' heavy' : ''}`, `≈${w.memMB} MB`));
+    const hasAppClient = (w.clients || []).some((c) => c.isApp);
+    if (w.clientCount > 0 && (w.clientCount > 1 || !hasAppClient)) {
+      const chip = el('span', 'chip mem', `${w.clientCount} 个连接方`);
+      chip.title = (w.clients || []).map((c) => `${c.tty}${c.isApp ? '（拾忆）' : '（外部终端）'}`).join('\n');
+      meta.append(chip);
+    }
     main.appendChild(meta);
     row.appendChild(main);
 
@@ -455,6 +463,19 @@ function showRowMenu(anchor, w) {
   };
   const cwd = w.session?.cwd || w.cwd;
   if (cwd) item('打开会话目录', () => act({ action: 'open', reveal: true, path: cwd }));
+  const others = (w.clients || []).filter((c) => !c.isApp);
+  if (others.length) {
+    item(`断开其他连接（${others.length}）`, () => {
+      showConfirm(
+        '断开其他终端的连接？',
+        `将断开 ${others.map((c) => c.tty).join('、')}，只保留拾忆内置终端。会话本身不受影响，其他窗口会回到普通 shell。`,
+        async () => {
+          await act({ action: 'detach-clients', ttys: others.map((c) => c.tty) });
+        },
+        '确认断开'
+      );
+    });
+  }
   item(getOpenMode() === 'embedded' ? '在 iTerm 中打开（外置终端）' : '在内置终端打开', () => openOtherWay(w));
   item('设置别名', () => openRenameDialog(liveRenameKeys(w)[0], liveTitle(w)));
   item('终止会话', () => terminateRow(w), true);
@@ -1046,6 +1067,10 @@ async function act(payload) {
         refresh();
       } else if (payload.action === 'open-translation-cache') {
         toast('已在 Finder 中打开翻译缓存文件');
+      } else if (payload.action === 'detach-clients') {
+        hideModal();
+        toast(`已断开 ${data.detached || 0} 个外部连接`);
+        refresh();
       } else if (payload.action === 'terminate') {
         hideModal();
         toast('已终止会话');
