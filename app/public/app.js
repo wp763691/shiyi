@@ -664,9 +664,9 @@ function renderHistory() {
     row.appendChild(actions);
     row.ondblclick = (e) => {
       if (e.target.closest('button')) return;
-      act({ action: 'resume', sessionId: s.sessionId, cwd: s.cwd, tool: s.tool });
+      adoptIntoEmbedded({ tool: s.tool, sessionId: s.sessionId, cwd: s.cwd, name: customName([sessionKeyFor(s.tool, s.sessionId)], s.title) });
     };
-    row.title = '双击恢复该会话（iTerm / Terminal）';
+    row.title = '双击切换到内置终端（tmux）；原会话记录不变';
     HIST.appendChild(row);
   }
 }
