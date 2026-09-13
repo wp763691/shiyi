@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { scanAllSessions, trashSession } from './lib/sessions.mjs';
 import { listTerminalWindows, runningClaudeProcs, focusWindow, resumeSession } from './lib/terminal.mjs';
-import { attachTmuxSession, terminateProcess } from './lib/terminal.mjs';
+import { attachTmuxSession, terminateProcess, processTable, treeRssMB } from './lib/terminal.mjs';
 import { scanSkills, trashSkill } from './lib/skills.mjs';
 import {
   scanRules,
@@ -90,7 +90,7 @@ async function buildState() {
   const projectDirs = [...new Set(sessions.map((s) => s.cwd).filter(Boolean))]
     .filter((p) => p && p !== home && !p.startsWith(home + path.sep + '.'))
     .slice(0, 300);
-  const [term, procsRes, skills, rules, mcp, agents, commands, hooks, tmuxAgents, configFiles] = await Promise.all([
+  const [term, procsRes, skills, rules, mcp, agents, commands, hooks, tmuxAgents, configFiles, table] = await Promise.all([
     listTerminalWindows(),
     runningClaudeProcs(),
     scanSkills(projectDirs),
@@ -101,6 +101,7 @@ async function buildState() {
     scanHooks(projectDirs),
     listTmuxAgents(),
     scanConfigFiles(),
+    processTable(),
   ]);
   if (term.error) errors.push({ scope: 'windows', detail: term.error });
   if (procsRes.error) errors.push({ scope: 'processes', detail: procsRes.error });
@@ -140,6 +141,7 @@ async function buildState() {
       title: w.title || '',
       tty: w.tty,
       procPid: proc?.pid || null,
+      memMB: treeRssMB(proc?.pid, table),
       tool,
       running: Boolean(proc),
       session: active
@@ -198,8 +200,14 @@ async function buildState() {
       );
       const proc = candidates.find((p) => p.sessionId || p.sessionFile) || candidates[0];
       const s = activeForProc(proc, t.tool);
+      const candPids = new Set(candidates.map((c) => c.pid));
+      let memMB = 0;
+      for (const root of candidates.filter((c) => !candPids.has(parentOf.get(c.pid)))) {
+        memMB += treeRssMB(root.pid, table);
+      }
       return {
         ...t,
+        memMB,
         session: s ? { sessionId: s.sessionId, tool: s.tool, title: s.title, lastTs: s.lastTs, cwd: s.cwd } : null,
       };
     }),

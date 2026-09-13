@@ -136,16 +136,70 @@ export async function terminateProcess(pid) {
     const tool = classifyAgent(cmd);
     if (!tool) return { ok: false, error: '该进程不是 claude/codex 会话，拒绝操作' };
     if (/shiyi|server\.mjs|pty_bridge/i.test(cmd)) return { ok: false, error: '拒绝终止拾忆自身进程' };
-    process.kill(n, 'SIGTERM');
+    // 连同子进程一起结束（MCP 子进程等），避免残留
+    const table = await processTable();
+    const targets = [];
+    const stack = [n];
+    const seen = new Set();
+    while (stack.length) {
+      const pid = stack.pop();
+      if (seen.has(pid)) continue;
+      seen.add(pid);
+      targets.push(pid);
+      for (const c of table.childrenOf.get(pid) || []) stack.push(c);
+    }
+    for (const pid of targets) {
+      try { process.kill(pid, 'SIGTERM'); } catch { /* 已退出 */ }
+    }
     await new Promise((r) => setTimeout(r, 1200));
-    try {
-      process.kill(n, 0);
-      process.kill(n, 'SIGKILL');
-    } catch { /* 已退出 */ }
-    return { ok: true, tool };
+    for (const pid of targets) {
+      try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch { /* 已退出 */ }
+    }
+    return { ok: true, tool, killed: targets.length };
   } catch (e) {
     return { ok: false, error: String(e?.message || e) };
   }
+}
+
+// 进程表与进程树内存（RSS，KB→MB）
+export async function processTable() {
+  try {
+    const { stdout } = await execFileP('/bin/ps', ['-axo', 'pid=,ppid=,rss=,command='], {
+      timeout: 6000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    const rows = [];
+    for (const line of stdout.split('\n')) {
+      const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/);
+      if (!m) continue;
+      rows.push({ pid: Number(m[1]), ppid: Number(m[2]), rssMB: Math.round(Number(m[3]) / 1024), command: m[4] });
+    }
+    const childrenOf = new Map();
+    const byPid = new Map();
+    for (const r of rows) {
+      byPid.set(r.pid, r);
+      if (!childrenOf.has(r.ppid)) childrenOf.set(r.ppid, []);
+      childrenOf.get(r.ppid).push(r.pid);
+    }
+    return { rows, byPid, childrenOf };
+  } catch {
+    return { rows: [], byPid: new Map(), childrenOf: new Map() };
+  }
+}
+
+export function treeRssMB(rootPid, table) {
+  if (!rootPid || !table?.byPid?.has(rootPid)) return 0;
+  let total = 0;
+  const stack = [rootPid];
+  const seen = new Set();
+  while (stack.length) {
+    const pid = stack.pop();
+    if (seen.has(pid)) continue;
+    seen.add(pid);
+    total += table.byPid.get(pid)?.rssMB || 0;
+    for (const c of table.childrenOf.get(pid) || []) stack.push(c);
+  }
+  return total;
 }
 
 // 命令行里出现的是真正的 claude / codex 可执行文件（排除 claude-mermaid 这类辅助进程）

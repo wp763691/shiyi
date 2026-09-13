@@ -223,6 +223,7 @@ function liveAll() {
     attached: t.attached,
     pane: `${t.window}.${t.pane}`,
     createdMs: t.createdMs || 0,
+    memMB: t.memMB || 0,
   }));
   const all = [...windows, ...tmux];
   const pins = livePins();
@@ -381,6 +382,7 @@ function renderLive() {
     if (w.tmux) meta.append(el('span', 'chip', `窗格 ${w.pane}`));
     if (w.session?.cwd) meta.append(el('span', 'chip path', w.session.cwd));
     if (w.session?.lastTs) meta.append(el('span', 'chip', fmtRel(w.session.lastTs) + '活跃'));
+    if (w.memMB) meta.append(el('span', `chip mem${w.memMB >= 700 ? ' heavy' : ''}`, `≈${w.memMB} MB`));
     main.appendChild(meta);
     row.appendChild(main);
 
@@ -440,6 +442,21 @@ function terminateRow(w) {
   );
 }
 
+function releaseRow(w) {
+  showConfirm(
+    `释放内存：结束「${liveTitle(w)}」？`,
+    `该会话约占 ${w.memMB || 0} MB。结束会同时回收其子进程（MCP 等）；对话记录完整保留，需要时可在历史中随时恢复，或再次切换到内置终端。`,
+    async () => {
+      await act({
+        action: 'terminate',
+        mode: w.tmux ? 'tmux' : 'process',
+        name: w.sessionName,
+        pid: w.procPid,
+      });
+    }
+  );
+}
+
 function closeRowMenu() {
   document.querySelectorAll('.row-menu').forEach((m) => m.remove());
 }
@@ -464,6 +481,7 @@ function showRowMenu(anchor, w) {
   if (cwd) item('打开会话目录', () => act({ action: 'open', reveal: true, path: cwd }));
   if (w.session?.sessionId) item('切换到内置终端', () => adoptRunningRow(w));
   item('重命名', () => openRenameDialog(liveRenameKeys(w)[0], liveTitle(w)));
+  if (w.memMB) item('释放内存（结束会话，可恢复）', () => releaseRow(w));
   item('终止会话', () => terminateRow(w), true);
   document.body.appendChild(menu);
   const r = anchor.getBoundingClientRect();

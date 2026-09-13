@@ -156,6 +156,8 @@ select {
 .tag.tool-claude { color: #7c543a; background: #f6ece4; }
 .tag.tool-agents { color: #46606b; background: #e9f0f3; }
 .tag.tool-bash { color: #4c5870; background: #eef0f3; }
+.chip.mem { color: #4a5da0; background: #eef1fa; }
+.chip.mem.heavy { color: #a8342e; background: #fdecea; }
 .tag.scope-project { color: #4a5da0; background: #edf0fa; }
 .tag.scope-global { color: #8a651f; background: #faf0d9; }
 .tag.tmux-tag { color: #3c5a34; background: #eaf3e4; }
