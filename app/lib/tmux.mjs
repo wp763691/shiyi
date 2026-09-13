@@ -1,8 +1,23 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { access } from 'node:fs/promises';
 
 const execFileP = promisify(execFile);
-const TMUX = '/opt/homebrew/bin/tmux';
+const TMUX_CANDIDATES = ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux', '/usr/bin/tmux'];
+let tmuxPathCache = null;
+
+export async function tmuxBin() {
+  if (tmuxPathCache) return tmuxPathCache;
+  for (const p of TMUX_CANDIDATES) {
+    try { await access(p); tmuxPathCache = p; return p; } catch { /* 继续 */ }
+  }
+  try {
+    const { stdout } = await execFileP('/bin/bash', ['-lc', 'command -v tmux'], { timeout: 5000 });
+    const p = stdout.trim();
+    if (p) { tmuxPathCache = p; return p; }
+  } catch { /* 未安装 */ }
+  return null;
+}
 
 // 规范化会话名：支持中文等 Unicode，空格/标点转短横
 export function normalizeSessionName(name) {
@@ -14,16 +29,20 @@ export function normalizeSessionName(name) {
 }
 
 export async function renameTmuxSession(fromName, toName) {
+  const bin = await tmuxBin();
+  if (!bin) throw new Error('未安装 tmux');
   const clean = normalizeSessionName(toName);
   if (!clean) throw new Error('会话名不能为空');
-  await execFileP(TMUX, ['rename-session', '-t', fromName, clean], { timeout: 6000 });
+  await execFileP(bin, ['rename-session', '-t', fromName, clean], { timeout: 6000 });
   return { ok: true, name: clean };
 }
 
 // 列出 tmux 里正在运行的 claude / codex 会话
 export async function listTmuxAgents() {
   try {
-    const { stdout } = await execFileP('/opt/homebrew/bin/tmux', [
+    const bin = await tmuxBin();
+    if (!bin) return { ok: true, items: [], error: null };
+    const { stdout } = await execFileP(bin, [
       'list-panes', '-a',
       '-F', '#{session_name}|#{window_index}|#{pane_index}|#{pane_current_command}|#{pane_current_path}|#{session_attached}|#{pane_tty}|#{pane_start_command}|#{session_created}|#{pane_pid}',
     ], { timeout: 5000 });

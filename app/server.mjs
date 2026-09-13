@@ -18,7 +18,7 @@ import {
   trashRuleFile,
   checkMcp,
 } from './lib/registry.mjs';
-import { listTmuxAgents, normalizeSessionName, renameTmuxSession } from './lib/tmux.mjs';
+import { listTmuxAgents, normalizeSessionName, renameTmuxSession, tmuxBin } from './lib/tmux.mjs';
 import { scanConfigFiles, readConfigFile, saveConfigFile } from './lib/configfiles.mjs';
 import {
   loadTranslations,
@@ -368,7 +368,9 @@ const server = http.createServer(async (req, res) => {
       if (body.action === 'terminate') {
         try {
           if (body.mode === 'tmux') {
-            await execFileP('/opt/homebrew/bin/tmux', ['kill-session', '-t', String(body.name)], { timeout: 6000 });
+            const tmux = await tmuxBin();
+            if (!tmux) throw new Error('未安装 tmux');
+            await execFileP(tmux, ['kill-session', '-t', String(body.name)], { timeout: 6000 });
             sendJson(res, 200, { ok: true });
           } else {
             const out = await terminateProcess(body.pid);
@@ -401,8 +403,26 @@ const server = http.createServer(async (req, res) => {
             sendJson(res, 400, { ok: false, error: '工作目录不是文件夹' });
             return;
           }
+          const tmux = await tmuxBin();
+          if (!tmux) {
+            sendJson(res, 400, { ok: false, error: '未安装 tmux，请先运行：brew install tmux' });
+            return;
+          }
+          if (tool !== 'bash') {
+            try {
+              await execFileP('/bin/bash', ['-lc', `command -v ${tool}`], { timeout: 5000 });
+            } catch {
+              sendJson(res, 400, {
+                ok: false,
+                error: tool === 'claude'
+                  ? '未检测到 Claude Code CLI，请先运行：npm install -g @anthropic-ai/claude-code'
+                  : '未检测到 Codex CLI，请先运行：npm install -g @openai/codex',
+              });
+              return;
+            }
+          }
           const cmd = tool === 'bash' ? 'bash' : perm ? `${tool} ${perm}` : tool;
-          await execFileP('/opt/homebrew/bin/tmux', ['new-session', '-d', '-s', safeName, '-c', dir, cmd], { timeout: 6000 });
+          await execFileP(tmux, ['new-session', '-d', '-s', safeName, '-c', dir, cmd], { timeout: 6000 });
           sendJson(res, 200, { ok: true, name: safeName, dir, tool });
         } catch (e) {
           sendJson(res, 500, { ok: false, error: String(e?.message || e).slice(0, 200) });
@@ -508,7 +528,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && url.pathname === '/api/terminal-open') {
       const body = await readBody(req);
-      const out = openTmuxTerminal(body.name);
+      const out = await openTmuxTerminal(body.name);
       sendJson(res, out.ok ? 200 : 400, out);
       return;
     }

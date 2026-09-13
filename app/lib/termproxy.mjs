@@ -5,20 +5,22 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { tmuxBin } from './tmux.mjs';
 
-const TMUX = '/opt/homebrew/bin/tmux';
 const sessions = new Map();
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const PYTHON = process.env.ZYIN_PYTHON || '/usr/bin/python3';
 
-export function openTmuxTerminal(sessionName) {
+export async function openTmuxTerminal(sessionName) {
   if (!sessionName || sessionName.startsWith('-') || !/^[\p{L}\p{N}_ .-]+$/u.test(sessionName)) {
     return { ok: false, error: '非法的 tmux 会话名' };
   }
+  const tmux = await tmuxBin();
+  if (!tmux) return { ok: false, error: '未安装 tmux，请先运行：brew install tmux' };
   const id = randomUUID();
   const bridge = path.join(moduleDir, 'pty_bridge.py');
   const ctrl = path.join(os.tmpdir(), `zyin-ctrl-${id}`);
-  const child = spawn(PYTHON, [bridge, '34', '100', TMUX, 'attach', '-t', sessionName], {
+  const child = spawn(PYTHON, [bridge, '34', '100', tmux, 'attach', '-t', sessionName], {
     env: { ...process.env, TERM: 'xterm-256color', ZYIN_CTRL: ctrl },
     stdio: ['pipe', 'pipe', 'pipe'],
   });

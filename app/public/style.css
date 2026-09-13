@@ -174,15 +174,16 @@ select {
 
 .toast {
   position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-  background: #20242f; color: #fff; border-radius: 10px; padding: 10px 18px;
-  font-size: 12.5px; box-shadow: var(--shadow-lg); z-index: 20;
+  background: #20242f; color: #fff; border-radius: 10px; padding: 12px 20px;
+  font-size: 13.5px; box-shadow: 0 18px 50px rgba(10, 14, 25, 0.45); z-index: 60;
+  max-width: 74vw; line-height: 1.55; white-space: normal; text-align: center;
 }
-.toast.error { background: #9f322c; }
+.toast.error { background: #a3271f; font-weight: 550; padding: 14px 24px; }
 
 .backdrop {
-  position: fixed; inset: 0; background: rgba(22, 26, 38, 0.34);
+  position: fixed; inset: 0; background: rgba(22, 26, 38, 0.45);
   display: grid; place-items: center; z-index: 30; padding: 20px;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(2px);
 }
 .backdrop[hidden] { display: none; }
 .seg {
