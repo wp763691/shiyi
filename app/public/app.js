@@ -1361,6 +1361,7 @@ async function openEmbeddedTmux(name) {
       if (e.isComposing || e.keyCode === 229) return true;
       // Shift+PageUp/PageDown 滚动本地缓冲（不会被 TUI 抢占）
       if (e.shiftKey && (e.key === 'PageUp' || e.key === 'PageDown')) {
+        e.preventDefault();
         rec.term.scrollPages(e.key === 'PageUp' ? -1 : 1);
         return false;
       }
@@ -1385,6 +1386,8 @@ async function openEmbeddedTmux(name) {
       // 所有可打印字符直通（涵盖 ! @ # $ % ^ & * ( ) _ + { } | : " < > ? ~ 等，
       // 以及 Shift/Option 组合产生的字符），规避 WKWebView 下的键位映射丢失
       if (!e.metaKey && !e.ctrlKey && typeof e.key === 'string' && [...e.key].length === 1) {
+        // 必须阻止默认行为，否则字符会被写进 xterm 隐藏输入框，造成重复输入
+        e.preventDefault();
         queueRecInput(rec, e.key);
         return false;
       }
