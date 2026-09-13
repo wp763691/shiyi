@@ -57,6 +57,7 @@ const TERM_CLEAR = document.getElementById('termClear');
 const FOCUS_TOGGLE = document.getElementById('focusToggle');
 const MEM_TOTAL = document.getElementById('memTotal');
 const IDLE_RELEASE = document.getElementById('idleRelease');
+const OPEN_MODE_BTN = document.getElementById('openModeBtn');
 const TERM_NEW = document.getElementById('termNew');
 const NEW_BACKDROP = document.getElementById('newBackdrop');
 const NEW_NAME = document.getElementById('newName');
@@ -398,12 +399,10 @@ function renderLive() {
     pinBtn.title = pinned ? '取消置顶' : '置顶该会话';
     pinBtn.onclick = () => togglePin(w);
     actions.appendChild(pinBtn);
-    if (w.tmux) {
-      const quick = el('button', 'btn small quick-term', '终端');
-      quick.title = '内置终端'; 
-      quick.onclick = () => handleEmbeddedOpen(w.sessionName);
-      actions.appendChild(quick);
-    }
+    const quick = el('button', 'btn small quick-term', '打开');
+    quick.title = `按偏好打开（${getOpenMode() === 'embedded' ? '内置终端' : 'iTerm'}）`;
+    quick.onclick = () => openRunningItem(w);
+    actions.appendChild(quick);
     const more = el('button', 'btn small more-btn', '⋯');
     more.title = '更多操作';
     more.onclick = (e) => showRowMenu(e.currentTarget, w);
@@ -411,19 +410,9 @@ function renderLive() {
     row.appendChild(actions);
     row.ondblclick = (e) => {
       if (e.target.closest('button')) return;
-      if (w.tmux) { handleEmbeddedOpen(w.sessionName); return; }
-      if (w.session?.sessionId) {
-        // 双击直接把外部会话切换为内置终端（历史保留，原窗口关闭）
-        adoptRunningRow(w, false);
-        return;
-      }
-      if (w.win) {
-        act({ action: 'focus', win: w.win, tab: w.tab });
-      } else {
-        toast('该会话无法打开内置终端，可用 ⋯ 菜单操作', true);
-      }
+      openRunningItem(w);
     };
-    row.title = w.tmux ? '双击在内置终端打开' : (w.session?.sessionId ? '双击切换到内置终端' : '双击聚焦窗口');
+    row.title = `双击打开（${getOpenMode() === 'embedded' ? '内置终端' : 'iTerm'}）`;
     LIVE.appendChild(row);
   }
 }
@@ -463,16 +452,10 @@ function showRowMenu(anchor, w) {
     b.onclick = () => { closeRowMenu(); fn(); };
     menu.appendChild(b);
   };
-  if (w.tmux) {
-    item('内置终端', () => handleEmbeddedOpen(w.sessionName));
-    item('接管会话（iTerm）', () => act({ action: 'tmux-attach', name: w.sessionName }));
-  } else if (w.win) {
-    item('聚焦窗口', () => act({ action: 'focus', win: w.win, tab: w.tab }));
-  }
   const cwd = w.session?.cwd || w.cwd;
   if (cwd) item('打开会话目录', () => act({ action: 'open', reveal: true, path: cwd }));
-  if (w.session?.sessionId) item('切换到内置终端', () => adoptRunningRow(w));
-  item('重命名', () => openRenameDialog(liveRenameKeys(w)[0], liveTitle(w)));
+  item(getOpenMode() === 'embedded' ? '在 iTerm 中打开（外置终端）' : '在内置终端打开', () => openOtherWay(w));
+  item('设置别名', () => openRenameDialog(liveRenameKeys(w)[0], liveTitle(w)));
   item('终止会话', () => terminateRow(w), true);
   document.body.appendChild(menu);
   const r = anchor.getBoundingClientRect();
@@ -485,6 +468,78 @@ function showRowMenu(anchor, w) {
 }
 
 let adopting = false;
+
+function getOpenMode() {
+  try { return localStorage.getItem('shiyi.openMode') === 'iterm' ? 'iterm' : 'embedded'; } catch { return 'embedded'; }
+}
+
+function setOpenMode(mode) {
+  try { localStorage.setItem('shiyi.openMode', mode); } catch { /* 忽略 */ }
+  updateOpenModeBtn();
+  renderLive();
+  renderHistory();
+}
+
+function updateOpenModeBtn() {
+  const embedded = getOpenMode() === 'embedded';
+  OPEN_MODE_BTN.textContent = embedded ? '打开：内置' : '打开：iTerm';
+  OPEN_MODE_BTN.title = embedded
+    ? '默认在拾忆内置终端打开（点击改为 iTerm）'
+    : '默认在 iTerm 打开（点击改为内置终端）';
+}
+
+// 运行中的会话：按偏好打开
+function openRunningItem(w) {
+  const embedded = getOpenMode() === 'embedded';
+  if (w.tmux) {
+    if (embedded) handleEmbeddedOpen(w.sessionName);
+    else act({ action: 'tmux-attach', name: w.sessionName });
+    return;
+  }
+  if (embedded) {
+    if (w.session?.sessionId) { adoptRunningRow(w, false); return; }
+    if (w.win) { act({ action: 'focus', win: w.win, tab: w.tab }); return; }
+    toast('该会话无法在内置终端打开，可用 ⋯ 菜单操作', true);
+    return;
+  }
+  if (w.win) { act({ action: 'focus', win: w.win, tab: w.tab }); return; }
+  if (w.session?.sessionId) {
+    act({ action: 'resume', sessionId: w.session.sessionId, cwd: w.session.cwd, tool: w.session.tool });
+    return;
+  }
+  toast('该会话无法在 iTerm 打开，可用 ⋯ 菜单操作', true);
+}
+
+// 历史会话：按偏好打开
+function openHistoryItem(s) {
+  if (getOpenMode() === 'embedded') {
+    adoptIntoEmbedded({
+      tool: s.tool, sessionId: s.sessionId, cwd: s.cwd,
+      name: customName([sessionKeyFor(s.tool, s.sessionId)], s.title),
+    });
+  } else {
+    act({ action: 'resume', sessionId: s.sessionId, cwd: s.cwd, tool: s.tool });
+  }
+}
+
+// 用"另一种方式"打开（偏好之外的路径）
+function openOtherWay(w) {
+  if (getOpenMode() === 'embedded') {
+    // 当前偏好内置 → 改用 iTerm 打开
+    if (w.tmux) { act({ action: 'tmux-attach', name: w.sessionName }); return; }
+    if (w.win) { act({ action: 'focus', win: w.win, tab: w.tab }); return; }
+    if (w.session?.sessionId) {
+      act({ action: 'resume', sessionId: w.session.sessionId, cwd: w.session.cwd, tool: w.session.tool });
+      return;
+    }
+    toast('该会话无法在 iTerm 打开', true);
+    return;
+  }
+  // 当前偏好 iTerm → 改用内置终端打开
+  if (w.tmux) { handleEmbeddedOpen(w.sessionName); return; }
+  if (w.session?.sessionId) { adoptRunningRow(w, true); return; }
+  toast('该会话缺少 ID，无法在内置终端打开', true);
+}
 
 async function adoptIntoEmbedded({ tool, sessionId, cwd, name, pid, terminate }) {
   if (adopting) return null;
@@ -559,7 +614,7 @@ function adoptRunningRow(w, needConfirm = true) {
   if (!s?.sessionId) return toast('该会话缺少 ID，无法转入', true);
   if (w.running && w.procPid && needConfirm) {
     showConfirm(
-      `切换到内置终端？`,
+      `在内置终端打开？`,
       `「${liveTitle(w)}」将在拾忆的内置终端中继续，原窗口随之关闭；对话历史与上下文完整保留，之后随时可以再切回 iTerm。`,
       async () => {
         await adoptIntoEmbedded({
@@ -663,8 +718,9 @@ function renderHistory() {
     row.appendChild(main);
 
     const actions = el('div', 'row-actions');
-    const resume = el('button', 'btn primary small', '恢复');
-    resume.onclick = () => act({ action: 'resume', sessionId: s.sessionId, cwd: s.cwd, tool: s.tool });
+    const resume = el('button', 'btn primary small', '打开');
+    resume.title = `按偏好打开（${getOpenMode() === 'embedded' ? '内置终端' : 'iTerm'}）`;
+    resume.onclick = () => openHistoryItem(s);
     const more = el('button', 'btn small more-btn', '⋯');
     more.title = '更多操作';
     more.onclick = (e) => showSimpleMenu(e.currentTarget, [
@@ -681,7 +737,7 @@ function renderHistory() {
         },
       },
       {
-        label: '重命名（显示别名）',
+        label: '设置别名',
         fn: () => openRenameDialog(
           sessionKeyFor(s.tool, s.sessionId),
           customName([sessionKeyFor(s.tool, s.sessionId)], s.title)
@@ -692,8 +748,8 @@ function renderHistory() {
         fn: () => act({ action: 'open', reveal: true, path: s.cwd }),
       }] : []),
       {
-        label: '切换到内置终端',
-        fn: () => adoptIntoEmbedded({ tool: s.tool, sessionId: s.sessionId, cwd: s.cwd, name: s.title }),
+        label: '在 iTerm 中打开（外置终端）',
+        fn: () => act({ action: 'resume', sessionId: s.sessionId, cwd: s.cwd, tool: s.tool }),
       },
       { sep: true },
       {
@@ -716,9 +772,9 @@ function renderHistory() {
     row.appendChild(actions);
     row.ondblclick = (e) => {
       if (e.target.closest('button')) return;
-      adoptIntoEmbedded({ tool: s.tool, sessionId: s.sessionId, cwd: s.cwd, name: customName([sessionKeyFor(s.tool, s.sessionId)], s.title) });
+      openHistoryItem(s);
     };
-    row.title = '双击切换到内置终端（tmux）；原会话记录不变';
+    row.title = `双击打开（${getOpenMode() === 'embedded' ? '内置终端' : 'iTerm'}）`;
     HIST.appendChild(row);
   }
 }
@@ -1977,6 +2033,11 @@ SKILL_MORE.addEventListener('click', (e) => {
 });
 FOCUS_TOGGLE.addEventListener('click', () => setFocusMode(!focusMode));
 IDLE_RELEASE.addEventListener('click', releaseIdleSessions);
+OPEN_MODE_BTN.addEventListener('click', () => {
+  const next = getOpenMode() === 'embedded' ? 'iterm' : 'embedded';
+  setOpenMode(next);
+  toast(next === 'embedded' ? '「打开」默认使用内置终端' : '「打开」默认使用 iTerm');
+});
 document.addEventListener('mousemove', (e) => {
   if (!focusMode) return;
   if (e.clientY < 8) document.body.classList.add('top-hover');
@@ -2065,6 +2126,7 @@ for (const btn of SKILL_SCOPE_BTNS) {
 DIR_FILTER.addEventListener('change', renderHistory);
 
 refresh();
+updateOpenModeBtn();
 activateTab(location.hash.replace('#', '') || (() => { try { return localStorage.getItem('shiyi.tab'); } catch { return null; } })() || 'sessions');
 if (location.hash === '#mcp') {
   activateTab('config');
