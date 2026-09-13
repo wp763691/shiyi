@@ -32,12 +32,23 @@ function loadModelWindows() {
   } catch { /* 忽略 */ }
   return modelWindows;
 }
+// Claude Code 会写入 <synthetic> 这类合成消息（压缩摘要等），它不是一个真实模型，
+// 不能拿它去查窗口大小，否则会退化成默认值、算出 >100% 的假占用
+function isSyntheticModel(model) {
+  const m = String(model || '').trim();
+  if (!m) return true;
+  return /^<.*>$/.test(m) || /^(synthetic|unknown|none)$/i.test(m);
+}
+
 function windowForModel(model) {
-  if (!model) return 0;
-  for (const m of loadModelWindows()) {
-    if (m.re.test(model)) return m.window;
+  const name = String(model || '').trim();
+  if (!isSyntheticModel(name)) {
+    for (const m of loadModelWindows()) {
+      if (m.re.test(name)) return { window: m.window, known: true };
+    }
   }
-  return 128000; // 保守默认
+  // 模型未知时不猜小值（避免出现 117% 这种误导），用中性默认并标记为"估算"
+  return { window: 200000, known: false };
 }
 
 // 目录重命名别名（app/path-aliases.json，不入库）：把旧项目路径映射到新路径
@@ -284,7 +295,13 @@ function finalizeMeta(meta) {
   if (meta.cwdLatest && existsSync(meta.cwdLatest)) meta.cwd = meta.cwdLatest;
   meta.cwd = mapCwd(meta.cwd);
   meta.cwdMissing = Boolean(meta.cwd) && !existsSync(meta.cwd);
-  if (meta.ctxTokens && !meta.ctxMax) meta.ctxMax = windowForModel(meta.model);
+  if (meta.ctxTokens && !meta.ctxMax) {
+    const w = windowForModel(meta.model);
+    meta.ctxMax = w.window;
+    meta.ctxWindowKnown = w.known;
+  } else if (meta.ctxMax) {
+    meta.ctxWindowKnown = true; // 窗口由模型端点直接给出（Codex）
+  }
   meta.dirName = meta.cwd ? shortPath(meta.cwd) : path.basename(path.dirname(meta.path));
   meta.exchanges = meta.assistantTurns;
   if (!meta.lastTs) meta.lastTs = meta.fileMtime;
@@ -337,7 +354,8 @@ async function parseClaudeFile(fp, s) {
       case 'assistant':
         meta.assistantTurns += 1;
         if (o.message && typeof o.message === 'object') {
-          if (o.message.model) meta.model = o.message.model;
+          // 合成消息（<synthetic>）不覆盖真实模型名，否则窗口大小会退化
+          if (!isSyntheticModel(o.message.model)) meta.model = o.message.model;
           const u = o.message.usage;
           if (u && typeof u === 'object') {
             const input = u.input_tokens || 0;
@@ -390,7 +408,7 @@ async function parseCodexFile(fp, s, titles) {
         if (!meta.cwd) meta.cwd = pl.cwd;
         meta.cwdLatest = pl.cwd;
       }
-      if (typeof pl.model === 'string' && pl.model) meta.model = pl.model;
+      if (!isSyntheticModel(pl.model)) meta.model = pl.model;
       if (typeof pl.model_context_window === 'number' && pl.model_context_window > 0) {
         meta.ctxMax = pl.model_context_window;
       }

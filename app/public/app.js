@@ -275,14 +275,16 @@ function sessionMetaById(sessionId) {
 function ctxBadge(meta, onOpen) {
   if (!meta || !meta.ctxTokens || !meta.ctxMax) return null;
   const pct = Math.min(999, Math.round((meta.ctxTokens / meta.ctxMax) * 100));
+  const known = meta.ctxWindowKnown !== false;
   const level = ctxLevel(meta);
   const cls = level === 'danger' ? 'chip ctx ctx-danger' : level === 'warn' ? 'chip ctx ctx-warn' : 'chip ctx';
-  const chip = el('span', `${cls}${onOpen ? ' clickable' : ''}`, `上下文 ${pct}%`);
+  const chip = el('span', `${cls}${onOpen ? ' clickable' : ''}`, `上下文 ${known ? '' : '≈'}${Math.min(pct, 100)}%`);
   const d = meta.ctxDetail || {};
   chip.title = [
     `${meta.ctxTokens.toLocaleString()} / ${meta.ctxMax.toLocaleString()} tokens`,
     `输入 ${(d.input || 0).toLocaleString()} · 缓存读 ${(d.cacheRead || 0).toLocaleString()}${d.cacheCreate ? ` · 缓存写 ${d.cacheCreate.toLocaleString()}` : ''}`,
     `输出 ${(d.output || 0).toLocaleString()}${meta.model ? ` · 模型 ${meta.model}` : ''}`,
+    known ? '' : '模型未识别，窗口大小按默认值估算（可在 ~/.shiyi/model-windows.json 覆盖）',
     onOpen ? '点击可查看交接与压缩选项' : '',
   ].join('\n');
   if (onOpen) {
@@ -309,7 +311,8 @@ function checkCtxWarnings(entries) {
       ctxWarned.set(meta.sessionId, level);
       if (level === 1) {
         toast(`「${meta.title}」上下文已用 ${pct}%（${Math.round(meta.ctxTokens / 1000)}k / ${Math.round(meta.ctxMax / 1000)}k），接近上限`);
-      } else if (!ctxSuppressed.has(meta.sessionId) && CTX_BACKDROP.hidden) {
+      } else if (!ctxSuppressed.has(meta.sessionId) && CTX_BACKDROP.hidden && meta.ctxWindowKnown !== false) {
+        // 窗口大小是估算的（模型未识别）时不自动弹，避免假警报；徽标仍可点
         openCtxDialog(meta, w);
       }
     } else if (level < prev) {
@@ -2131,22 +2134,29 @@ function openCtxDialog(meta, w) {
   if (!meta?.ctxTokens || !meta?.ctxMax) return;
   ctxTarget = { meta, w: w || null };
   const pct = Math.min(999, Math.round((meta.ctxTokens / meta.ctxMax) * 100));
+  const known = meta.ctxWindowKnown !== false;
   const d = meta.ctxDetail || {};
   const toolLabel = meta.tool === 'codex' ? 'Codex' : 'Claude Code';
-  CTX_TITLE.textContent = `上下文已用 ${pct}% · ${meta.title || '当前会话'}`;
+  CTX_TITLE.textContent = `上下文已用 ${known ? '' : '≈'}${Math.min(pct, 100)}% · ${meta.title || '当前会话'}`;
   CTX_TEXT.textContent =
-    `这个会话已经装了 ${meta.ctxTokens.toLocaleString()} / ${meta.ctxMax.toLocaleString()} tokens。\n` +
+    `这个会话已经装了 ${meta.ctxTokens.toLocaleString()} / ${meta.ctxMax.toLocaleString()} tokens` +
+    (known ? '。\n' : '（模型未识别，窗口按默认值估算）。\n') +
     '继续聊下去，越早的内容越容易被挤出去，模型可能"忘掉"前面说过的话。先做一次交接，再决定要不要留在当前会话。';
   CTX_DETAIL.textContent = [
     `输入 ${(d.input || 0).toLocaleString()} · 缓存读 ${(d.cacheRead || 0).toLocaleString()}` +
       (d.cacheCreate ? ` · 缓存写 ${d.cacheCreate.toLocaleString()}` : ''),
     `输出 ${(d.output || 0).toLocaleString()}${meta.model ? ` · 模型 ${meta.model}` : ''}`,
+    `窗口 ${meta.ctxMax.toLocaleString()}${known ? '' : '（按默认估算，可在 ~/.shiyi/model-windows.json 覆盖）'}`,
     meta.cwd ? `目录 ${meta.cwd}` : '',
   ].filter(Boolean).join('\n');
   const canInject = Boolean(w?.tmux && w?.sessionName);
+  // tmux 名和显示名可能不同（别名），两个都写出来，避免看起来像两个会话
+  const targetLabel = w?.sessionName && w.sessionName !== (meta.title || '')
+    ? `「${meta.title || w.sessionName}」（tmux: ${w.sessionName}）`
+    : `「${meta.title || w?.sessionName || ''}」`;
   CTX_COMPACT.textContent = canInject ? '压缩上下文（/compact）' : '复制 /compact 命令';
   CTX_HINT.textContent = canInject
-    ? `压缩：在「${w.sessionName}」里执行 /compact，摘要保留、原始对话被压缩。\n`
+    ? `压缩：在 ${targetLabel} 里执行 /compact，摘要保留、原始对话被压缩。\n`
       + `开新会话：在 ${meta.cwd || '同一目录'} 新开一个 ${toolLabel}，让它先读这份记录再继续。\n`
       + '关掉本窗口后，这个会话不再自动弹出（徽标变红仍然可见）。'
     : `当前会话不在 tmux 里，无法直接注入命令，将改为复制 /compact 让你手动粘贴。\n`
