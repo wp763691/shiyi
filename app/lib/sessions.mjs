@@ -11,6 +11,35 @@ const CODEX_INDEX = path.join(os.homedir(), '.codex', 'session_index.jsonl');
 
 const cache = new Map(); // filePath -> { mtimeMs, size, data }
 
+// 模型上下文窗口映射（Claude 兼容端点不返回窗口大小；可用 ~/.shiyi/model-windows.json 覆盖）
+const DEFAULT_WINDOWS = [
+  { re: /deepseek/i, window: 128000 },
+  { re: /claude.*(opus|sonnet|haiku)/i, window: 200000 },
+  { re: /gpt-5|o4|o3/i, window: 400000 },
+];
+let modelWindows = null;
+function loadModelWindows() {
+  if (modelWindows) return modelWindows;
+  modelWindows = [...DEFAULT_WINDOWS];
+  try {
+    const file = path.join(os.homedir(), '.shiyi', 'model-windows.json');
+    if (existsSync(file)) {
+      const obj = JSON.parse(readFileSync(file, 'utf8'));
+      for (const [pattern, window] of Object.entries(obj || {})) {
+        if (typeof window === 'number') modelWindows.unshift({ re: new RegExp(pattern, 'i'), window });
+      }
+    }
+  } catch { /* 忽略 */ }
+  return modelWindows;
+}
+function windowForModel(model) {
+  if (!model) return 0;
+  for (const m of loadModelWindows()) {
+    if (m.re.test(model)) return m.window;
+  }
+  return 128000; // 保守默认
+}
+
 // 目录重命名别名（app/path-aliases.json，不入库）：把旧项目路径映射到新路径
 function loadPathAliases() {
   try {
@@ -255,6 +284,7 @@ function finalizeMeta(meta) {
   if (meta.cwdLatest && existsSync(meta.cwdLatest)) meta.cwd = meta.cwdLatest;
   meta.cwd = mapCwd(meta.cwd);
   meta.cwdMissing = Boolean(meta.cwd) && !existsSync(meta.cwd);
+  if (meta.ctxTokens && !meta.ctxMax) meta.ctxMax = windowForModel(meta.model);
   meta.dirName = meta.cwd ? shortPath(meta.cwd) : path.basename(path.dirname(meta.path));
   meta.exchanges = meta.assistantTurns;
   if (!meta.lastTs) meta.lastTs = meta.fileMtime;
@@ -306,6 +336,20 @@ async function parseClaudeFile(fp, s) {
       }
       case 'assistant':
         meta.assistantTurns += 1;
+        if (o.message && typeof o.message === 'object') {
+          if (o.message.model) meta.model = o.message.model;
+          const u = o.message.usage;
+          if (u && typeof u === 'object') {
+            const input = u.input_tokens || 0;
+            const cacheRead = u.cache_read_input_tokens || 0;
+            const cacheCreate = u.cache_creation_input_tokens || 0;
+            const ctx = input + cacheRead + cacheCreate;
+            if (ctx > 0) {
+              meta.ctxTokens = ctx;
+              meta.ctxDetail = { input, cacheRead, cacheCreate, output: u.output_tokens || 0 };
+            }
+          }
+        }
         break;
       default:
         break;
@@ -345,6 +389,25 @@ async function parseCodexFile(fp, s, titles) {
       if (typeof pl.cwd === 'string' && pl.cwd) {
         if (!meta.cwd) meta.cwd = pl.cwd;
         meta.cwdLatest = pl.cwd;
+      }
+      if (typeof pl.model === 'string' && pl.model) meta.model = pl.model;
+      if (typeof pl.model_context_window === 'number' && pl.model_context_window > 0) {
+        meta.ctxMax = pl.model_context_window;
+      }
+    } else if (o.type === 'event_msg' && pl.type === 'token_count') {
+      const info = pl.info && typeof pl.info === 'object' ? pl.info : pl;
+      const last = info.last_token_usage || pl.last_token_usage;
+      if (last && typeof last === 'object') {
+        const input = last.input_tokens || 0;
+        const cacheRead = last.cached_input_tokens || last.cache_read_input_tokens || 0;
+        const ctx = input + cacheRead;
+        if (ctx > 0) {
+          meta.ctxTokens = ctx;
+          meta.ctxDetail = { input, cacheRead, output: last.output_tokens || 0 };
+        }
+      }
+      if (typeof info.model_context_window === 'number' && info.model_context_window > 0) {
+        meta.ctxMax = info.model_context_window;
       }
     } else if (o.type === 'event_msg' && pl.type === 'user_message') {
       const texts = [];

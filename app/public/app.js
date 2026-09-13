@@ -259,6 +259,45 @@ function customName(keys, fallback) {
   return fallback;
 }
 
+function sessionMetaById(sessionId) {
+  if (!sessionId) return null;
+  return (state.sessions || []).find((s) => s.sessionId === sessionId) || null;
+}
+
+function ctxBadge(meta) {
+  if (!meta || !meta.ctxTokens || !meta.ctxMax) return null;
+  const pct = Math.min(999, Math.round((meta.ctxTokens / meta.ctxMax) * 100));
+  const level = pct >= 90 ? 'danger' : pct >= 80 ? 'warn' : 'ok';
+  const cls = level === 'danger' ? 'chip ctx ctx-danger' : level === 'warn' ? 'chip ctx ctx-warn' : 'chip ctx';
+  const chip = el('span', cls, `上下文 ${pct}%`);
+  const d = meta.ctxDetail || {};
+  chip.title = [
+    `${meta.ctxTokens.toLocaleString()} / ${meta.ctxMax.toLocaleString()} tokens`,
+    `输入 ${(d.input || 0).toLocaleString()} · 缓存读 ${(d.cacheRead || 0).toLocaleString()}${d.cacheCreate ? ` · 缓存写 ${d.cacheCreate.toLocaleString()}` : ''}`,
+    `输出 ${(d.output || 0).toLocaleString()}${meta.model ? ` · 模型 ${meta.model}` : ''}`,
+  ].join('\n');
+  return chip;
+}
+
+const ctxWarned = new Map();
+function checkCtxWarnings(runningMetas) {
+  for (const meta of runningMetas) {
+    if (!meta?.ctxTokens || !meta?.ctxMax) continue;
+    const pct = Math.round((meta.ctxTokens / meta.ctxMax) * 100);
+    const level = pct >= 90 ? 2 : pct >= 80 ? 1 : 0;
+    const prev = ctxWarned.get(meta.sessionId) || 0;
+    if (level > prev) {
+      ctxWarned.set(meta.sessionId, level);
+      toast(
+        `「${meta.title}」上下文已用 ${pct}%（${Math.round(meta.ctxTokens / 1000)}k / ${Math.round(meta.ctxMax / 1000)}k），建议 /compact 或开新会话`,
+        level === 2
+      );
+    } else if (level < prev) {
+      ctxWarned.set(meta.sessionId, level);
+    }
+  }
+}
+
 function liveRenameKeys(w) {
   const keys = [];
   if (w.session) keys.push(sessionKeyFor(w.session.tool, w.session.sessionId));
@@ -381,6 +420,8 @@ function renderLive() {
     if (w.tmux) line1.append(el('span', 'tag tmux-tag', 'tmux'));
     const chip = toolChip(w);
     if (chip) line1.append(el('span', chip[0], chip[1]));
+    const ctxChip = ctxBadge(sessionMetaById(w.session?.sessionId));
+    if (ctxChip) line1.append(ctxChip);
     main.appendChild(line1);
 
     const meta = el('div', 'row-meta');
@@ -713,6 +754,8 @@ function renderHistory() {
     line1.textContent = customName([sessionKeyFor(s.tool, s.sessionId)], s.title);
     const chip = toolChip(s);
     if (chip) line1.append(el('span', chip[0], chip[1]));
+    const ctxChip = ctxBadge(s);
+    if (ctxChip) line1.append(ctxChip);
     if (s.branch) line1.append(el('span', 'tag branch', s.branch));
     main.appendChild(line1);
 
@@ -1978,6 +2021,10 @@ async function refresh() {
   renderSkills();
   renderConfig();
   renderTermTabs();
+  checkCtxWarnings([
+    ...(state.windows || []).map((w) => sessionMetaById(w.session?.sessionId)),
+    ...(state.tmuxSessions || []).map((t) => sessionMetaById(t.session?.sessionId)),
+  ].filter(Boolean));
   const runningCount = liveAll().length;
   const histCount = baseHistory().length;
   TAB_SESS_COUNT.textContent = String(runningCount + histCount);
