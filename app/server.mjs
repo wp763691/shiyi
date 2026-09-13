@@ -552,7 +552,7 @@ const server = http.createServer(async (req, res) => {
           }
           // 幂等：若已有 tmux 会话在恢复同一个会话 ID，直接复用
           try {
-            const { stdout } = await execFileP(tmux, ['list-sessions', '-F', '#{session_name}|#{session_start_command}'], { timeout: 5000 });
+            const { stdout } = await execFileP(tmux, ['list-panes', '-a', '-F', '#{session_name}|#{pane_start_command}'], { timeout: 5000 });
             for (const line of stdout.split('\n')) {
               const [sname, scmd] = line.split('|');
               if (sname && scmd && scmd.includes(sid)) {
