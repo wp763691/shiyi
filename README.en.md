@@ -2,7 +2,7 @@
 
 > Pick up every Claude Code / Codex session and skill, in one place.
 
-[![Download](https://img.shields.io/badge/Download-v1.0.5-blue)](https://github.com/wp763691/shiyi/releases/latest)
+[![Download](https://img.shields.io/badge/Download-v1.0.6-blue)](https://github.com/wp763691/shiyi/releases/latest)
 
 **Shiyi** is a local-first macOS desktop tool that gives you a bird's-eye view of your AI coding sessions. It maps running terminal/tmux sessions, searches full history, restores any conversation in one click, and manages skills, rules, MCP servers, agents, commands and hooks across both Claude Code and Codex — all on your own machine.
 
