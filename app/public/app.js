@@ -1408,7 +1408,15 @@ async function openEmbeddedTmux(name) {
   activateTerminal(name);
   dbg('activateTerminal 完成');
   STATUS_LEFT.textContent = `打开 ${name}：标签已就绪，正在 attach…`;
-  term.onData((d) => queueRecInput(rec, d));
+  term.onData((d) => {
+    // 去重：手动直通的字符若在极短时间内又被 xterm/输入法送出一次，丢弃后者
+    const g = rec.manualGuard;
+    if (g && d === g.ch && performance.now() - g.ts < 90) {
+      rec.manualGuard = null;
+      return;
+    }
+    queueRecInput(rec, d);
+  });
   try {
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
@@ -1422,6 +1430,7 @@ async function openEmbeddedTmux(name) {
       };
       if (e.shiftKey && !e.metaKey && !e.ctrlKey && SHIFT_MAP[e.code]) {
         e.preventDefault();
+        rec.manualGuard = { ch: SHIFT_MAP[e.code], ts: performance.now() };
         queueRecInput(rec, SHIFT_MAP[e.code]);
         flushRecInput(rec);
         try { rec.term.scrollToBottom(); } catch { /* 忽略 */ }
@@ -1458,6 +1467,7 @@ async function openEmbeddedTmux(name) {
       if (!e.metaKey && !e.ctrlKey && typeof e.key === 'string' && [...e.key].length === 1) {
         // 必须阻止默认行为，否则字符会被写进 xterm 隐藏输入框，造成重复输入
         e.preventDefault();
+        rec.manualGuard = { ch: e.key, ts: performance.now() };
         queueRecInput(rec, e.key);
         flushRecInput(rec);          // 立即发送，避免"按一下没反应"
         try { rec.term.scrollToBottom(); } catch { /* 忽略 */ }
