@@ -62,6 +62,9 @@ const MIME = {
 };
 const execFileP = promisify(execFile);
 
+// 演示模式下的别名只存内存，避免污染用户真实的 ~/.shiyi/session-names.json
+const demoSessionNames = {};
+
 // 单引号包裹的 shell 字面量（用于生成临时启动脚本）
 function shq(s) {
   return `'${String(s).replace(/'/g, `'\\''`)}'`;
@@ -362,6 +365,7 @@ function demoState() {
       '/Users/demo/.codex/skills/sql-optimizer': { nameZh: 'SQL 优化', descZh: '分析慢查询并给出索引与改写建议。', locked: true, updatedAt: now },
     },
     translationStats: { total: 8, translated: 7 },
+    sessionNames: { ...demoSessionNames },
     rules: [
       { kind: 'rule', name: 'CLAUDE.md', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/CLAUDE.md', lines: 42, mtime: now - 3600000, preview: '团队规范：默认英文注释，提交信息遵循 Conventional Commits…' },
       { kind: 'rule', name: 'AGENTS.md', tool: 'codex', scope: 'global', path: '/Users/demo/.codex/AGENTS.md', lines: 20, mtime: now - 7200000, preview: 'Codex 通用守则…' },
@@ -612,6 +616,16 @@ const server = http.createServer(async (req, res) => {
       }
       if (body.action === 'set-session-name') {
         try {
+          if (process.env.SHIYI_DEMO === '1') {
+            const key = String(body.key || '');
+            const name = String(body.name || '').trim();
+            if (key) {
+              if (name) demoSessionNames[key] = name;
+              else delete demoSessionNames[key];
+            }
+            sendJson(res, 200, { ok: true, key, name });
+            return;
+          }
           const out = await setSessionName(body.key, body.name);
           sendJson(res, 200, out);
         } catch (e) {

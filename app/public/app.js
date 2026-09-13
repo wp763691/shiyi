@@ -326,6 +326,25 @@ function liveRenameKeys(w) {
   return keys.filter(Boolean);
 }
 
+// 终端标签与「运行中」列表必须是同一个名字：
+// 先按 tmux 名找到对应的运行项，统一走 liveTitle()；找不到才退回 tmux 别名
+function tmuxLiveWindow(name) {
+  return liveAll().find((x) => x.tmux && x.sessionName === name) || null;
+}
+
+function tmuxTabKeys(name) {
+  const w = tmuxLiveWindow(name);
+  const keys = w ? liveRenameKeys(w) : [];
+  keys.push(`tmux:${name}`);
+  return [...new Set(keys.filter(Boolean))];
+}
+
+function tmuxTabTitle(name) {
+  const w = tmuxLiveWindow(name);
+  if (w) return liveTitle(w);
+  return customName([`tmux:${name}`], name);
+}
+
 function liveSortTs(w) {
   return w.createdMs || w.session?.lastTs || 0;
 }
@@ -347,13 +366,28 @@ function togglePin(w) {
   renderLive();
 }
 
-function openRenameDialog(key, current, mode = 'alias') {
-  if (mode === 'alias' && !key) return toast('该会话暂不支持重命名', true);
-  renameKey = { mode, key, from: mode === 'tmux' ? current : null };
+function openRenameDialog(keys, current, mode = 'alias') {
+  const list = (Array.isArray(keys) ? keys : [keys]).filter(Boolean);
+  if (mode === 'alias' && !list.length) return toast('该会话暂不支持重命名', true);
+  renameKey = { mode, keys: list, from: mode === 'tmux' ? current : null };
   RENAME_INPUT.value = current || '';
   RENAME_BACKDROP.hidden = false;
   RENAME_INPUT.focus();
   RENAME_INPUT.select();
+}
+
+// 同一个逻辑会话可能同时有 session:/tmux:/win: 三个别名 key，
+// 只写一个就会出现「列表改名了、标签还是旧名」。统一全部写一遍。
+async function saveAliasTo(keys, name) {
+  for (const key of [...new Set(keys.filter(Boolean))]) {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set-session-name', key, name }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '保存失败');
+  }
 }
 
 async function saveRenameDialog() {
@@ -393,18 +427,10 @@ async function saveRenameDialog() {
       await refresh();
       return;
     }
-    const res = await fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'set-session-name', key: renameKey.key, name: RENAME_INPUT.value }),
-    });
-    const data = await res.json();
-    if (!data.ok) {
-      toast(`重命名失败：${data.error || ''}`, true);
-      return;
-    }
+    const name = RENAME_INPUT.value;
+    await saveAliasTo(renameKey.keys, name);
     RENAME_BACKDROP.hidden = true;
-    toast(data.name ? '已重命名' : '已恢复默认标题');
+    toast(name ? '已重命名' : '已恢复默认标题');
     await refresh();
   } catch (e) {
     toast(`重命名失败：${e.message}`, true);
@@ -539,7 +565,7 @@ function showRowMenu(anchor, w) {
     });
   }
   item(getOpenMode() === 'embedded' ? '在 iTerm 中打开（外置终端）' : '在内置终端打开', () => openOtherWay(w));
-  item('设置别名', () => openRenameDialog(liveRenameKeys(w)[0], liveTitle(w)));
+  item('设置别名', () => openRenameDialog(liveRenameKeys(w), liveTitle(w)));
   item('终止会话', () => terminateRow(w), true);
   document.body.appendChild(menu);
   const r = anchor.getBoundingClientRect();
@@ -1279,7 +1305,7 @@ function renderTermTabs() {
     const dot = document.createElement('i');
     dot.className = rec.alive ? 'tdot on' : 'tdot';
     const label = document.createElement('span');
-    label.textContent = customName([`tmux:${rec.name}`], rec.name);
+    label.textContent = tmuxTabTitle(rec.name);
     const close = document.createElement('b');
     close.textContent = '×';
     close.title = '关闭视图（tmux 仍在后台）';
@@ -1288,14 +1314,14 @@ function renderTermTabs() {
     btn.onclick = () => activateTerminal(rec.name);
     btn.ondblclick = (e) => {
       e.stopPropagation();
-      openRenameDialog(`tmux:${rec.name}`, customName([`tmux:${rec.name}`], rec.name), 'alias');
+      openRenameDialog(tmuxTabKeys(rec.name), tmuxTabTitle(rec.name), 'alias');
     };
     btn.oncontextmenu = (e) => {
       e.preventDefault();
       e.stopPropagation();
       const items = [];
       if (rec.cwd) items.push({ label: '打开会话目录', fn: () => act({ action: 'open', reveal: true, path: rec.cwd }) });
-      items.push({ label: '设置显示别名', fn: () => openRenameDialog(`tmux:${rec.name}`, customName([`tmux:${rec.name}`], rec.name), 'alias') });
+      items.push({ label: '设置显示别名', fn: () => openRenameDialog(tmuxTabKeys(rec.name), tmuxTabTitle(rec.name), 'alias') });
       showSimpleMenu(btn, items);
     };
     TERM_TABS.insertBefore(btn, hint);
