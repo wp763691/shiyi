@@ -550,6 +550,17 @@ const server = http.createServer(async (req, res) => {
             await terminateProcess(body.pid);
             await new Promise((r) => setTimeout(r, 900));
           }
+          // 幂等：若已有 tmux 会话在恢复同一个会话 ID，直接复用
+          try {
+            const { stdout } = await execFileP(tmux, ['list-sessions', '-F', '#{session_name}|#{session_start_command}'], { timeout: 5000 });
+            for (const line of stdout.split('\n')) {
+              const [sname, scmd] = line.split('|');
+              if (sname && scmd && scmd.includes(sid)) {
+                sendJson(res, 200, { ok: true, name: sname, dir, tool, reused: true });
+                return;
+              }
+            }
+          } catch { /* 没有 tmux server 时忽略 */ }
           const base = normalizeSessionName(body.name || `${tool}-${sid.slice(0, 8)}`) || `${tool}-${sid.slice(0, 8)}`;
           let name = base;
           for (let i = 2; i < 20; i += 1) {

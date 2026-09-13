@@ -471,7 +471,11 @@ function showRowMenu(anchor, w) {
   }, 0);
 }
 
+let adopting = false;
+
 async function adoptIntoEmbedded({ tool, sessionId, cwd, name, pid, terminate }) {
+  if (adopting) return null;
+  adopting = true;
   try {
     const res = await fetch('/api/action', {
       method: 'POST',
@@ -490,6 +494,8 @@ async function adoptIntoEmbedded({ tool, sessionId, cwd, name, pid, terminate })
   } catch (e) {
     toast(`转入失败：${e.message}`, true);
     return null;
+  } finally {
+    adopting = false;
   }
 }
 
@@ -1723,7 +1729,16 @@ function showConfirm(title, text, onOk) {
   MODAL_OK.hidden = false;
   MODAL_CLOSE.textContent = '取消';
   MODAL_BACKDROP.hidden = false;
-  MODAL_OK.onclick = () => onOk();
+  MODAL_OK.onclick = async () => {
+    if (MODAL_OK.disabled) return;
+    MODAL_OK.disabled = true;
+    hideModal();
+    try {
+      await onOk();
+    } finally {
+      MODAL_OK.disabled = false;
+    }
+  };
   MODAL_CLOSE.onclick = hideModal;
 }
 
