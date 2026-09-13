@@ -1201,7 +1201,7 @@ function flushRecInput(rec) {
 function queueRecInput(rec, data) {
   if (!rec.id) return;
   rec.buf = (rec.buf || '') + data;
-  if (!rec.timer) rec.timer = setInterval(() => flushRecInput(rec), 25);
+  if (!rec.timer) rec.timer = setInterval(() => flushRecInput(rec), 10);
 }
 
 function activeRec() {
@@ -1444,6 +1444,8 @@ async function openEmbeddedTmux(name) {
         // 必须阻止默认行为，否则字符会被写进 xterm 隐藏输入框，造成重复输入
         e.preventDefault();
         queueRecInput(rec, e.key);
+        flushRecInput(rec);          // 立即发送，避免"按一下没反应"
+        try { rec.term.scrollToBottom(); } catch { /* 忽略 */ }
         return false;
       }
       return true;
