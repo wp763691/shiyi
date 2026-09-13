@@ -111,6 +111,7 @@ function activateTab(name) {
     const history = panels[1];
     running.classList.remove('collapsed');
     history.classList.add('collapsed');
+    updateDrawerLayout();
     document.querySelectorAll('.mini-search').forEach((box) => { box.hidden = true; });
     document.querySelectorAll('[data-search]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
     setDrawer(true);
@@ -1298,6 +1299,12 @@ function setDrawer(open) {
   scheduleFit();
 }
 
+function updateDrawerLayout() {
+  const panels = document.querySelectorAll('.mini-panel');
+  const historyCollapsed = panels[1]?.classList.contains('collapsed');
+  WB_DRAWER.classList.toggle('history-collapsed', Boolean(historyCollapsed));
+}
+
 function openNewSession() {
   const dirs = [...new Set((state.sessions || []).map((s) => s.cwd).filter(Boolean))];
   if (!dirs.includes('/Users/wp/Desktop/llm/Shiyi')) dirs.unshift('/Users/wp/Desktop/llm/Shiyi');
@@ -1711,6 +1718,7 @@ for (const head of document.querySelectorAll('.mini-head')) {
   head.addEventListener('click', (e) => {
     if (e.target.closest('input, select, button, .count')) return;
     head.closest('.mini-panel').classList.toggle('collapsed');
+    updateDrawerLayout();
     scheduleFit();
   });
 }
