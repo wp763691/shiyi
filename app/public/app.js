@@ -2205,6 +2205,16 @@ document.addEventListener('input', (ev) => {
   if (!rec || ev.isComposing) return;
   sendComposedText(rec, ev.data, ev);
 }, true);
+// 输入法预编辑（拼音）阶段：不交给 xterm 绘制，避免提交后残留拼音
+function swallowPreedit(ev) {
+  const rec = ev.target && ev.target.__rec;
+  if (!rec) return;
+  try { ev.target.value = ''; } catch { /* 忽略 */ }
+  ev.preventDefault();
+  ev.stopImmediatePropagation();
+}
+document.addEventListener('compositionstart', swallowPreedit, true);
+document.addEventListener('compositionupdate', swallowPreedit, true);
 document.addEventListener('compositionend', (ev) => {
   const rec = ev.target && ev.target.__rec;
   if (!rec) return;
