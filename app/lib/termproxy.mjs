@@ -32,21 +32,26 @@ export async function openTmuxTerminal(sessionName) {
     ctrl,
     res: null,
     queue: [],
+    pending: [],
+    pendingBytes: 0,
+    flushTimer: null,
     alive: true,
   };
   sessions.set(id, rec);
 
   child.stdout.on('data', (chunk) => {
-    const b64 = chunk.toString('base64');
-    if (rec.res && rec.res.writableEnded === false) {
-      rec.res.write(`data: ${b64}\n\n`);
-    } else {
-      rec.queue.push(b64);
-      if (rec.queue.length > 2000) rec.queue.shift();
-    }
+    // 把零碎输出合并成更少的 SSE 帧：整屏重绘时 64KB 读会被拆成很多小 chunk，
+    // 每 chunk 一帧会让浏览器解码/渲染次数暴涨
+    rec.pending.push(chunk);
+    rec.pendingBytes += chunk.length;
+    if (rec.pendingBytes >= 262144) { flushPending(rec); return; }
+    if (!rec.flushTimer) rec.flushTimer = setTimeout(() => flushPending(rec), 10);
   });
   child.on('error', () => rec.alive = false);
   child.on('close', () => {
+    if (rec.flushTimer) { clearTimeout(rec.flushTimer); rec.flushTimer = null; }
+    rec.pending = [];
+    rec.pendingBytes = 0;
     rec.alive = false;
     if (rec.res && rec.res.writableEnded === false) {
       rec.res.write(`event: close\ndata: {}\n\n`);
@@ -55,6 +60,21 @@ export async function openTmuxTerminal(sessionName) {
     sessions.delete(id);
   });
   return { ok: true, id, name: sessionName };
+}
+
+function flushPending(rec) {
+  if (rec.flushTimer) { clearTimeout(rec.flushTimer); rec.flushTimer = null; }
+  if (!rec.pending.length) return;
+  const buf = Buffer.concat(rec.pending, rec.pendingBytes);
+  rec.pending = [];
+  rec.pendingBytes = 0;
+  const b64 = buf.toString('base64');
+  if (rec.res && rec.res.writableEnded === false) {
+    rec.res.write(`data: ${b64}\n\n`);
+  } else {
+    rec.queue.push(b64);
+    if (rec.queue.length > 2000) rec.queue.shift();
+  }
 }
 
 export async function resizeTerminal(id, cols, rows) {

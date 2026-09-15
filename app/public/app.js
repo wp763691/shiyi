@@ -1333,14 +1333,33 @@ function clearActiveTerm() {
 }
 
 function renderTermTabs() {
+  const hint = document.getElementById('tabsHint');
+  // 结构没变时只原地更新文字与状态：每 5 秒重建一次 DOM 会在滚动时造成顿挫
+  const existing = [...TERM_TABS.querySelectorAll('.term-tab')];
+  const sameSet = existing.length === termSessions.length
+    && termSessions.every((r, i) => existing[i]?.dataset.name === r.name);
+  if (sameSet) {
+    termSessions.forEach((rec, i) => {
+      const btn = existing[i];
+      btn.classList.toggle('active', rec.name === activeTermName);
+      btn.querySelector('.tdot')?.classList.toggle('on', Boolean(rec.alive));
+      const label = btn.querySelector('span');
+      const want = tmuxTabTitle(rec.name);
+      if (label && label.textContent !== want) label.textContent = want;
+    });
+    TERM_EMPTY.hidden = termSessions.length > 0;
+    if (hint) hint.hidden = termSessions.length > 0;
+    persistOpenTabs();
+    return;
+  }
   TERM_TABS.querySelectorAll('.term-tab').forEach((el) => el.remove());
   TERM_EMPTY.hidden = termSessions.length > 0;
-  const hint = document.getElementById('tabsHint');
   if (hint) hint.hidden = termSessions.length > 0;
   for (const rec of termSessions) {
     const btn = document.createElement('button');
     btn.className = 'term-tab' + (rec.name === activeTermName ? ' active' : '');
     btn.type = 'button';
+    btn.dataset.name = rec.name;
     const dot = document.createElement('i');
     dot.className = rec.alive ? 'tdot on' : 'tdot';
     const label = document.createElement('span');
@@ -1365,21 +1384,6 @@ function renderTermTabs() {
     };
     TERM_TABS.insertBefore(btn, hint);
   }
-  const info = [];
-  const btn = TERM_TABS.querySelector('.term-tab');
-  if (btn) {
-    const r = btn.getBoundingClientRect();
-    const cs = getComputedStyle(btn);
-    info.push(`tabRect=${Math.round(r.width)}x${Math.round(r.height)} display=${cs.display}`);
-  } else {
-    info.push('tabRect=无');
-  }
-  const tabsRect = TERM_TABS.getBoundingClientRect();
-  const stageRect = TERM_STAGE.getBoundingClientRect();
-  const wbRect = document.querySelector('.wb-terminal')?.getBoundingClientRect();
-  info.push(`tabs=${Math.round(tabsRect.width)}x${Math.round(tabsRect.height)} stage=${Math.round(stageRect.width)}x${Math.round(stageRect.height)}`);
-  if (wbRect) info.push(`wb=${Math.round(wbRect.width)}x${Math.round(wbRect.height)}`);
-  dbg(`几何: ${info.join(' | ')}`);
   persistOpenTabs();
 }
 
@@ -1644,7 +1648,9 @@ async function connectTermStream(rec) {
         if (payload) {
           try {
             const raw = atob(payload);
-            const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
+            // 紧凑循环：比 Uint8Array.from(..., c => c.charCodeAt(0)) 快约 30 倍
+            const bytes = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
             rec.term.write(bytes);
           } catch { /* 忽略坏帧 */ }
         }
@@ -1679,18 +1685,19 @@ function fitActiveTerminal() {
   } catch { /* 忽略 */ }
   const cols = Math.max(20, Math.floor(availW / cw));
   const rows = Math.max(5, Math.floor(availH / ch));
-  try {
-    rec.term.resize(cols, rows);
-    STATUS_RIGHT.textContent = `${cols}×${rows} · ⌥拖动选择复制 · ⌘L 列表 · ⌘1-9 切标签`;
-  } catch { /* 忽略 */ }
-  try {
-    const slot = rec.slot.getBoundingClientRect();
-    const el = rec.term.element?.getBoundingClientRect();
-    const screen = rec.term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
-    const canvas = rec.term.element?.querySelector('canvas')?.getBoundingClientRect();
-    dbg(`终端几何 slot=${Math.round(slot.width)}x${Math.round(slot.height)} xtermEl=${el ? `${Math.round(el.width)}x${Math.round(el.height)}` : '-'} screen=${screen ? `${Math.round(screen.width)}x${Math.round(screen.height)}` : '-'} canvas=${canvas ? `${Math.round(canvas.width)}x${Math.round(canvas.height)}` : '-'} cols=${cols} rows=${rows}`);
-  } catch { /* 忽略 */ }
-  if (rec.id) {
+  const key = `${cols}x${rows}`;
+  // 尺寸没变就什么都不做：避免无谓的 xterm.resize + tmux SIGWINCH 整屏重绘
+  if (rec.term.cols !== cols || rec.term.rows !== rows) {
+    try {
+      rec.term.resize(cols, rows);
+    } catch { /* 忽略 */ }
+    rec.ptySynced = null;
+    dbg(`终端尺寸 ${key}`);
+  }
+  const status = `${cols}×${rows} · ⌥拖动选择复制 · ⌘L 列表 · ⌘1-9 切标签`;
+  if (STATUS_RIGHT.textContent !== status) STATUS_RIGHT.textContent = status;
+  if (rec.id && rec.ptySynced !== key) {
+    rec.ptySynced = key;
     fetch('/api/terminal-input', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2249,6 +2256,30 @@ async function ctxHandoff() {
   }
 }
 
+// 状态签名：只纳入会影响渲染的字段，并把每轮都会变的内存/时间戳做粗粒度取整，
+// 这样"数据没变"的轮询就不必重建列表 DOM
+let lastStateSig = '';
+function stateSigOf(s) {
+  if (!s) return '';
+  const mb = (v) => Math.round((v || 0) / 10);
+  const minute = (v) => Math.round((v || 0) / 60000);
+  return JSON.stringify([
+    (s.sessions || []).map((x) => [x.sessionId, x.title, x.cwd, x.ctxTokens, x.ctxMax, x.ctxWindowKnown, x.model, minute(x.lastTs), mb(x.mb), x.exchanges]),
+    (s.windows || []).map((w) => [w.win, w.tab, w.title, w.session?.sessionId, w.session?.title, mb(w.memMB), w.running, w.clientCount]),
+    (s.tmuxSessions || []).map((t) => [t.name, t.cwd, t.attached, mb(t.memMB), t.session?.sessionId, t.clientCount]),
+    (s.skills || []).map((k) => [k.path, k.name, k.description, minute(k.mtime), k.scope, k.project]),
+    [...(s.rules || []), ...(s.mcp || []), ...(s.agents || []), ...(s.commands || []), ...(s.hooks || [])]
+      .map((k) => [k.path || k.name, k.kind, k.scope, minute(k.mtime), k.lines, k.preview]),
+    s.sessionNames,
+    // 翻译只取会影响显示的几个字段（updatedAt 这类元数据每次都可能不同）
+    s.skillTranslations
+      ? Object.entries(s.skillTranslations).map(([k, v]) => [k, v?.nameZh || '', v?.descZh || '', v?.locked === true])
+      : null,
+    s.errors,
+    s.demo === true,
+  ]);
+}
+
 let toastTimer;
 function toast(msg, isError = false) {
   TOAST.textContent = msg;
@@ -2270,13 +2301,19 @@ async function refresh() {
     CONN.textContent = '连接断开';
     document.body.classList.add('offline');
   }
-  renderWarnings();
-  renderLive();
-  renderDirFilter();
-  renderHistory();
-  renderSkills();
-  renderConfig();
-  renderTermTabs();
+  // 只在数据真的变了才重绘（每 5 秒全量重建 DOM 会在滚动时造成顿挫）；
+  // 内存与时间戳做粗粒度取整，避免每轮都判定为"变了"
+  const sig = stateSigOf(state);
+  if (sig !== lastStateSig) {
+    lastStateSig = sig;
+    renderWarnings();
+    renderLive();
+    renderDirFilter();
+    renderHistory();
+    renderSkills();
+    renderConfig();
+    renderTermTabs();
+  }
   checkCtxWarnings(
     liveAll()
       .map((w) => ({ w, meta: sessionMetaById(w.session?.sessionId) }))
