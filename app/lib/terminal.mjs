@@ -229,13 +229,15 @@ end tell`;
   }
 }
 
-export async function resumeSession(sessionId, cwd, tool = 'claude') {
+export async function resumeSession(sessionId, cwd, tool = 'claude', permMode = '') {
   const bin = await resolveBin(tool === 'codex' ? 'codex' : 'claude');
-  const args = tool === 'codex' ? `resume ${shq(sessionId)}` : `--resume ${shq(sessionId)}`;
+  const args = tool === 'codex'
+    ? `${permArgs('codex', permMode)}resume ${shq(sessionId)}`
+    : `--resume ${shq(sessionId)}${permArgs('claude', permMode)}`;
   const log = '/tmp/zyin-resume.log';
   const dirExists = Boolean(cwd) && existsSync(cwd);
   const dir = shq(dirExists ? cwd : (process.env.HOME || '/'));
-  const manual = buildManualCommand(dirExists ? cwd : '', tool, sessionId);
+  const manual = buildManualCommand(dirExists ? cwd : '', tool, sessionId, permMode);
 
   // 第一优先：iTerm2 Python API（在当前 iTerm 窗口新开标签）
   try {
@@ -313,10 +315,23 @@ async function resumeViaItermPython(command) {
   }
 }
 
-function buildManualCommand(cwd, tool, sessionId) {
+// 权限模式 → CLI 参数。default / on-request 是常规行为，不带参数
+export function permArgs(tool, mode) {
+  const m = String(mode || '').trim();
+  if (!m || m === 'default' || m === 'on-request') return '';
+  if (tool === 'codex') return m === 'never' ? ' --yolo' : '';
+  return ['bypassPermissions', 'acceptEdits', 'plan', 'auto', 'manual'].includes(m) ? ` --permission-mode ${m}` : '';
+}
+
+function buildManualCommand(cwd, tool, sessionId, permMode = '') {
   const bin = tool === 'codex' ? 'codex' : 'claude';
   const flag = tool === 'codex' ? 'resume' : '--resume';
-  return cwd ? `cd '${cwd}' && ${bin} ${flag} ${sessionId}` : `${bin} ${flag} ${sessionId}`;
+  if (tool === 'codex') {
+    const full = `codex${permArgs('codex', permMode)} ${flag} ${sessionId}`;
+    return cwd ? `cd '${cwd}' && ${full}` : full;
+  }
+  const full = `claude ${flag} ${sessionId}${permArgs('claude', permMode)}`;
+  return cwd ? `cd '${cwd}' && ${full}` : full;
 }
 
 function quoteApple(s) {

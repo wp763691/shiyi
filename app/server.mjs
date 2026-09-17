@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { scanAllSessions, trashSession } from './lib/sessions.mjs';
-import { listTerminalWindows, runningClaudeProcs, focusWindow, resumeSession } from './lib/terminal.mjs';
+import { listTerminalWindows, runningClaudeProcs, focusWindow, resumeSession, permArgs } from './lib/terminal.mjs';
 import { attachTmuxSession, terminateProcess, processTable, treeRssMB } from './lib/terminal.mjs';
 import { scanSkills, trashSkill } from './lib/skills.mjs';
 import {
@@ -29,6 +29,7 @@ import {
   translationStorePath,
 } from './lib/translations.mjs';
 import { loadSessionNames, setSessionName } from './lib/names.mjs';
+import { loadPrefs, setPref } from './lib/prefs.mjs';
 import {
   openTmuxTerminal,
   writeTerminalInput,
@@ -68,6 +69,15 @@ const demoSessionNames = {};
 // 单引号包裹的 shell 字面量（用于生成临时启动脚本）
 function shq(s) {
   return `'${String(s).replace(/'/g, `'\\''`)}'`;
+}
+
+// 恢复/转入会话时用哪种权限模式：
+// original = 沿用会话记录里的模式（默认），default = 一律默认权限，auto = 一律全自动
+function resolvePermMode(policy, tool, recordedPerm) {
+  const p = String(policy || 'original');
+  if (p === 'auto') return tool === 'codex' ? 'never' : 'bypassPermissions';
+  if (p === 'default') return '';
+  return String(recordedPerm || '');
 }
 
 // 生成"交接摘要"提示词：让新会话先读旧 transcript，再输出交接摘要
@@ -285,6 +295,7 @@ async function buildState() {
     skillTranslations: await loadTranslations(),
     translationStats: await translationStats(skills),
     sessionNames: await loadSessionNames(),
+    prefs: loadPrefs(),
     homeDir: os.homedir(),
     errors,
     now: Date.now(),
@@ -366,6 +377,7 @@ function demoState() {
     },
     translationStats: { total: 8, translated: 7 },
     sessionNames: { ...demoSessionNames },
+    prefs: loadPrefs(),
     rules: [
       { kind: 'rule', name: 'CLAUDE.md', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/CLAUDE.md', lines: 42, mtime: now - 3600000, preview: '团队规范：默认英文注释，提交信息遵循 Conventional Commits…' },
       { kind: 'rule', name: 'AGENTS.md', tool: 'codex', scope: 'global', path: '/Users/demo/.codex/AGENTS.md', lines: 20, mtime: now - 7200000, preview: 'Codex 通用守则…' },
@@ -425,9 +437,21 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (body.action === 'resume') {
-        const out = await resumeSession(body.sessionId, body.cwd, body.tool || 'claude');
+        const tool = body.tool || 'claude';
+        const mode = resolvePermMode(loadPrefs().resumePerm, tool, body.recordedPerm);
+        const out = await resumeSession(body.sessionId, body.cwd, tool, mode);
+        if (out.ok) out.permMode = mode;
         if (out.detail) out.error = out.detail;
         sendJson(res, out.ok ? 200 : 500, out);
+        return;
+      }
+      if (body.action === 'set-pref') {
+        try {
+          const out = await setPref(body.key, body.value);
+          sendJson(res, out.ok ? 200 : 400, out);
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
         return;
       }
       if (body.action === 'delete') {
@@ -690,7 +714,9 @@ const server = http.createServer(async (req, res) => {
           if (dir.length > 1 && dir.endsWith('/')) dir = dir.slice(0, -1);
           const st = dir ? await stat(dir).catch(() => null) : null;
           if (!st || !st.isDirectory()) dir = os.homedir();
-          const perm = String(body.perm || '').trim();
+          // 优先用显式传入的参数；否则按「打开会话的权限模式」偏好解析
+          const mode0 = resolvePermMode(loadPrefs().resumePerm, tool, body.recordedPerm);
+          const perm = String(body.perm || permArgs(tool, mode0)).trim();
           if (!/^[A-Za-z0-9 _-]*$/.test(perm) || perm.length > 80) {
             sendJson(res, 400, { ok: false, error: '权限参数不合法' });
             return;
@@ -793,10 +819,13 @@ const server = http.createServer(async (req, res) => {
               break; // 不存在，可用
             }
           }
-          const cmd = tool === 'codex' ? `codex resume ${sid}` : `claude --resume ${sid}`;
+          const mode = resolvePermMode(loadPrefs().resumePerm, tool, body.recordedPerm);
+          const cmd = tool === 'codex'
+            ? `codex${permArgs('codex', mode)} resume ${sid}`
+            : `claude --resume ${sid}${permArgs('claude', mode)}`;
           await execFileP(tmux, ['new-session', '-d', '-s', name, '-c', dir, cmd], { timeout: 8000 });
           await ensureTmuxScrollOptions(name);
-          sendJson(res, 200, { ok: true, name, dir, tool });
+          sendJson(res, 200, { ok: true, name, dir, tool, permMode: mode });
         } catch (e) {
           sendJson(res, 500, { ok: false, error: String(e?.message || e) });
         }

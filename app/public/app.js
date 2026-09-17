@@ -272,6 +272,22 @@ function sessionMetaById(sessionId) {
   return (state.sessions || []).find((s) => s.sessionId === sessionId) || null;
 }
 
+// 会话记录里带的权限模式（恢复时"沿用原会话"要用它）
+function recordedPermFor(tool, sessionId) {
+  const s = sessionMetaById(sessionId);
+  if (!s) return '';
+  if (tool && s.tool !== tool) return '';
+  return s.recordedPerm || '';
+}
+
+function permModeLabel(mode) {
+  const m = String(mode || '');
+  if (m === 'bypassPermissions' || m === 'never') return '全自动';
+  if (m === 'acceptEdits') return '自动接受编辑';
+  if (m === 'plan') return '计划模式';
+  return '默认权限';
+}
+
 function ctxBadge(meta, onOpen) {
   if (!meta || !meta.ctxTokens || !meta.ctxMax) return null;
   const pct = Math.min(999, Math.round((meta.ctxTokens / meta.ctxMax) * 100));
@@ -608,7 +624,7 @@ function openRunningItem(w) {
   }
   if (w.win) { act({ action: 'focus', win: w.win, tab: w.tab }); return; }
   if (w.session?.sessionId) {
-    act({ action: 'resume', sessionId: w.session.sessionId, cwd: w.session.cwd, tool: w.session.tool });
+    act({ action: 'resume', sessionId: w.session.sessionId, cwd: w.session.cwd, tool: w.session.tool, recordedPerm: recordedPermFor(w.session.tool, w.session.sessionId) });
     return;
   }
   toast('该会话无法在 iTerm 打开，可用 ⋯ 菜单操作', true);
@@ -622,7 +638,7 @@ function openHistoryItem(s) {
       name: customName([sessionKeyFor(s.tool, s.sessionId)], s.title),
     });
   } else {
-    act({ action: 'resume', sessionId: s.sessionId, cwd: s.cwd, tool: s.tool });
+    act({ action: 'resume', sessionId: s.sessionId, cwd: s.cwd, tool: s.tool, recordedPerm: recordedPermFor(s.tool, s.sessionId) });
   }
 }
 
@@ -633,7 +649,7 @@ function openOtherWay(w) {
     if (w.tmux) { act({ action: 'tmux-attach', name: w.sessionName }); return; }
     if (w.win) { act({ action: 'focus', win: w.win, tab: w.tab }); return; }
     if (w.session?.sessionId) {
-      act({ action: 'resume', sessionId: w.session.sessionId, cwd: w.session.cwd, tool: w.session.tool });
+      act({ action: 'resume', sessionId: w.session.sessionId, cwd: w.session.cwd, tool: w.session.tool, recordedPerm: recordedPermFor(w.session.tool, w.session.sessionId) });
       return;
     }
     toast('该会话无法在 iTerm 打开', true);
@@ -653,14 +669,17 @@ async function adoptIntoEmbedded({ tool, sessionId, cwd, name, pid, terminate })
     const res = await fetch('/api/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'adopt-session', tool, sessionId, cwd, name, pid, terminate }),
+      body: JSON.stringify({
+        action: 'adopt-session', tool, sessionId, cwd, name, pid, terminate,
+        recordedPerm: recordedPermFor(tool, sessionId),
+      }),
     });
     const data = await res.json();
     if (!data.ok) {
       toast(`转入失败：${data.error || ''}`, true);
       return null;
     }
-    toast(`已转入内置终端：${data.name}`);
+    toast(`已转入内置终端：${data.name}${data.permMode ? `（${permModeLabel(data.permMode)}）` : ''}`);
     await refresh();
     openEmbeddedTmux(data.name);
     return data.name;
@@ -810,6 +829,11 @@ function renderHistory() {
     if (chip) line1.append(el('span', chip[0], chip[1]));
     const ctxChip = ctxBadge(s);
     if (ctxChip) line1.append(ctxChip);
+    if (s.permLabel) {
+      const permChip = el('span', s.permLabel === '全自动' ? 'tag perm-auto' : 'tag', s.permLabel);
+      permChip.title = `该会话记录里的权限模式：${s.recordedPerm}\n按「设置 → 打开会话的权限模式」决定打开时是否沿用`;
+      line1.append(permChip);
+    }
     if (s.branch) line1.append(el('span', 'tag branch', s.branch));
     main.appendChild(line1);
 
@@ -858,7 +882,7 @@ function renderHistory() {
       }] : []),
       {
         label: '在 iTerm 中打开（外置终端）',
-        fn: () => act({ action: 'resume', sessionId: s.sessionId, cwd: s.cwd, tool: s.tool }),
+        fn: () => act({ action: 'resume', sessionId: s.sessionId, cwd: s.cwd, tool: s.tool, recordedPerm: recordedPermFor(s.tool, s.sessionId) }),
       },
       { sep: true },
       {
@@ -1010,13 +1034,67 @@ function toolTag(x) {
   return el('span', `tag ${toolClsOf(x)}`, label);
 }
 
+// 「设置」页顶部的拾忆偏好行：打开/恢复会话时用哪种权限模式
+function renderPrefRow() {
+  const cur = (state.prefs || {}).resumePerm || 'original';
+  const hints = {
+    original: '沿用会话记录里的模式：原来是全自动就还是全自动',
+    default: '一律用默认权限打开，逐条确认',
+    auto: '一律全自动：Claude 用 bypassPermissions，Codex 用 --yolo',
+  };
+  const row = el('div', 'row config-row');
+  const main = el('div', 'row-main');
+  const line1 = el('div', 'row-title');
+  line1.textContent = '打开会话的权限模式';
+  line1.append(el('span', 'tag', '拾忆偏好'));
+  main.appendChild(line1);
+  const desc = el('div', 'row-preview');
+  desc.textContent = '作用范围：打开历史会话、转为内置终端。新建会话仍用新建窗口里的选择。';
+  main.appendChild(desc);
+  const meta = el('div', 'row-meta');
+  meta.append(el('span', 'chip', hints[cur] || ''));
+  main.appendChild(meta);
+  row.appendChild(main);
+
+  const actions = el('div', 'row-actions');
+  const seg = el('div', 'seg');
+  for (const [val, label] of [['original', '沿用原会话'], ['default', '默认权限'], ['auto', '全自动']]) {
+    const b = el('button', `seg-btn${cur === val ? ' active' : ''}`, label);
+    b.type = 'button';
+    b.onclick = async () => {
+      if (cur === val) return;
+      b.disabled = true;
+      try {
+        const res = await fetch('/api/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set-pref', key: 'resumePerm', value: val }),
+        });
+        const data = await res.json();
+        if (!data.ok) { toast(`保存失败：${data.error || ''}`, true); return; }
+        toast(`打开会话的权限模式已设为「${label}」`);
+        await refresh();
+      } catch (e) {
+        toast(`保存失败：${e.message}`, true);
+      } finally {
+        b.disabled = false;
+      }
+    };
+    seg.appendChild(b);
+  }
+  actions.appendChild(seg);
+  row.appendChild(actions);
+  return row;
+}
+
 function renderConfig() {
   const all = configView === 'settings' ? state.configFiles || [] : state[configView] || [];
   const list = configFiltered();
-  const titles = { rules: '规则库', mcp: 'MCP 服务器', agents: 'Agents', commands: '斜杠命令', hooks: 'Hooks（只读）', settings: '工具配置文件' };
+  const titles = { rules: '规则库', mcp: 'MCP 服务器', agents: 'Agents', commands: '斜杠命令', hooks: 'Hooks（只读）', settings: '设置（偏好 / 配置文件）' };
   CONFIG_TITLE.textContent = titles[configView] || '配置';
   CONFIG_COUNT.textContent = `${list.length} / ${all.length}`;
   CONFIG_ROWS.innerHTML = '';
+  if (configView === 'settings') CONFIG_ROWS.appendChild(renderPrefRow());
 
   if (!list.length) {
     const empty = el('div', 'empty');
@@ -1437,10 +1515,11 @@ function termTheme() {
     selectionBackground: '#3455d1',
     selectionForeground: '#ffffff',
     black: '#24292e', red: '#c3312c', green: '#116b46', yellow: '#8a5b00',
-    blue: '#3455d1', magenta: '#6f42c1', cyan: '#0b7285', white: '#eef0f4',
+    // 白底主题：ANSI 的 white / brightWhite 必须换成深色系，否则白字白底等于看不见
+    blue: '#3455d1', magenta: '#6f42c1', cyan: '#0b7285', white: '#6b7280',
     brightBlack: '#57606a', brightRed: '#d9524c', brightGreen: '#1a8f5f',
     brightYellow: '#b07800', brightBlue: '#5b79e8', brightMagenta: '#8c63d9',
-    brightCyan: '#149aa8', brightWhite: '#ffffff',
+    brightCyan: '#149aa8', brightWhite: '#1d2430',
   };
 }
 
@@ -1478,6 +1557,8 @@ async function openEmbeddedTmux(name) {
     cursorBlink: true,
     scrollback: 5000,
     macOptionClickForcesSelection: true,
+    // 兜底：任何前景/背景组合对比度过低时自动调深，避免出现看不见的字
+    minimumContrastRatio: 3,
     theme: termTheme(),
   });
   rec.term = term;
@@ -1788,6 +1869,9 @@ function updatePermSelect() {
     opt.textContent = label;
     NEW_PERM.appendChild(opt);
   }
+  // 记住上次在新建窗口里选的权限
+  const last = lastPermFor(newTool);
+  if (last && list.some(([value]) => value === last)) NEW_PERM.value = last;
   NEW_PERM_WRAP.hidden = list.length === 0;
 }
 
@@ -2237,7 +2321,7 @@ async function ctxHandoff() {
         name: baseName,
         title: meta.title || baseName,
         transcript: meta.path || '',
-        perm: lastPermFor(tool),
+        recordedPerm: meta.recordedPerm || '',
       }),
     });
     const data = await res.json();
@@ -2271,6 +2355,7 @@ function stateSigOf(s) {
     [...(s.rules || []), ...(s.mcp || []), ...(s.agents || []), ...(s.commands || []), ...(s.hooks || [])]
       .map((k) => [k.path || k.name, k.kind, k.scope, minute(k.mtime), k.lines, k.preview]),
     s.sessionNames,
+    s.prefs,
     // 翻译只取会影响显示的几个字段（updatedAt 这类元数据每次都可能不同）
     s.skillTranslations
       ? Object.entries(s.skillTranslations).map(([k, v]) => [k, v?.nameZh || '', v?.descZh || '', v?.locked === true])

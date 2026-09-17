@@ -288,6 +288,23 @@ function baseMeta(fp, s, tool) {
   };
 }
 
+// 权限模式 → 界面短标签（default / on-request 属于常规，不显示）
+function permLabelFor(tool, mode) {
+  const m = String(mode || '');
+  if (!m) return '';
+  if (tool === 'codex') {
+    if (m === 'never') return '全自动';
+    if (m === 'on-failure') return '失败时询问';
+    if (m === 'untrusted') return '仅信任命令';
+    return '';
+  }
+  if (m === 'bypassPermissions') return '全自动';
+  if (m === 'acceptEdits') return '自动接受编辑';
+  if (m === 'plan') return '计划模式';
+  if (m === 'auto') return '自动';
+  return '';
+}
+
 function finalizeMeta(meta) {
   if (meta.firstTitle) meta.title = meta.firstTitle;
   if (!meta.title) meta.title = meta.lastUserText ? meta.lastUserText.slice(0, 42) : '未命名会话';
@@ -304,6 +321,9 @@ function finalizeMeta(meta) {
   }
   meta.dirName = meta.cwd ? shortPath(meta.cwd) : path.basename(path.dirname(meta.path));
   meta.exchanges = meta.assistantTurns;
+  // 记录会话的权限模式，供"恢复时沿用原设置"使用
+  meta.recordedPerm = meta.tool === 'codex' ? (meta.approvalPolicy || '') : (meta.permMode || '');
+  meta.permLabel = permLabelFor(meta.tool, meta.recordedPerm);
   if (!meta.lastTs) meta.lastTs = meta.fileMtime;
   return meta;
 }
@@ -335,6 +355,8 @@ async function parseClaudeFile(fp, s) {
       meta.cwdLatest = o.cwd; // 最近一次记录的 cwd（目录重命名后会变成新路径）
     }
     if (!meta.branch && typeof o.gitBranch === 'string' && o.gitBranch) meta.branch = o.gitBranch;
+    // 权限模式会随会话变化（default / acceptEdits / bypassPermissions…），取最后一次
+    if (typeof o.permissionMode === 'string' && o.permissionMode) meta.permMode = o.permissionMode;
 
     switch (o.type) {
       case 'ai-title':
@@ -409,6 +431,7 @@ async function parseCodexFile(fp, s, titles) {
         meta.cwdLatest = pl.cwd;
       }
       if (!isSyntheticModel(pl.model)) meta.model = pl.model;
+      if (typeof pl.approval_policy === 'string' && pl.approval_policy) meta.approvalPolicy = pl.approval_policy;
       if (typeof pl.model_context_window === 'number' && pl.model_context_window > 0) {
         meta.ctxMax = pl.model_context_window;
       }
