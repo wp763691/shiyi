@@ -98,7 +98,11 @@ const CFG_PRE = document.getElementById('cfgPre');
 const CFG_TEXT = document.getElementById('cfgText');
 const CFG_CANCEL = document.getElementById('cfgCancel');
 const CFG_SAVE = document.getElementById('cfgSave');
+const CFG_REVEAL = document.getElementById('cfgReveal');
+const CFG_HINT = document.getElementById('cfgHint');
 let cfgCurrent = null;
+let cfgRaw = '';       // 文件原文（遮罩时也不丢）
+let cfgMasked = false;  // 含密钥的文件默认遮罩显示
 let newTool = 'bash';
 let configView = 'rules';
 const mcpStatus = new Map(); // key -> {state:'ok'|'fail'|'checking'|'skip', detail}
@@ -2389,6 +2393,30 @@ async function retranslateSkill(skill) {
   }
 }
 
+// 含密钥的文件：默认遮罩显示，点「显示密钥」后才允许编辑
+function maskSecrets(src) {
+  return String(src).split('\n').map((line) => {
+    const m = line.match(/^(\s*[\w.-]*(?:secret|token|key|password|credential)[\w.-]*\s*:\s*)(\S.*)$/i);
+    if (!m) return line;
+    return `${m[1]}••••••••（已遮罩）`;
+  }).join('\n');
+}
+
+function applyCfgMask() {
+  const secret = Boolean(cfgCurrent?.secret);
+  CFG_REVEAL.hidden = !secret;
+  CFG_REVEAL.textContent = cfgMasked ? '显示密钥' : '隐藏密钥';
+  CFG_TEXT.value = cfgMasked ? maskSecrets(cfgRaw) : cfgRaw;
+  CFG_TEXT.readOnly = cfgMasked;
+  CFG_SAVE.disabled = cfgMasked;
+  CFG_HINT.textContent = secret
+    ? (cfgMasked
+      ? '这个文件含密钥，已默认遮罩；点「显示密钥」后可编辑，保存前会自动备份。'
+      : '改动会立即对 dsh 生效（它会自动重载）；保存前会自动备份原文件。')
+    : '保存前会自动备份原文件。';
+  renderCfgPreview();
+}
+
 async function openConfigEditor(tool, label) {
   try {
     const res = await fetch(`/api/config-file?tool=${encodeURIComponent(tool)}`);
@@ -2397,12 +2425,13 @@ async function openConfigEditor(tool, label) {
       toast(`读取失败：${data.error || ''}`, true);
       return;
     }
-    cfgCurrent = { tool, label, path: data.path };
+    cfgCurrent = { tool, label, path: data.path, kind: data.kind || (tool === 'claude' ? 'json' : 'toml'), secret: Boolean(data.secret) };
+    cfgRaw = data.content;
+    cfgMasked = Boolean(data.secret);
     CFG_TITLE.textContent = `编辑 ${label}`;
-    CFG_TEXT.value = data.content;
-    renderCfgPreview();
+    applyCfgMask();
     CFG_BACKDROP.hidden = false;
-    CFG_TEXT.focus();
+    if (!cfgMasked) CFG_TEXT.focus();
   } catch (e) {
     toast(`读取失败：${e.message}`, true);
   }
@@ -2500,12 +2529,50 @@ function highlightToml(src) {
 
 function renderCfgPreview() {
   const src = CFG_TEXT.value;
-  CFG_PRE.innerHTML = cfgCurrent?.tool === 'claude' ? highlightJson(src) : highlightToml(src);
+  const kind = cfgCurrent?.kind || (cfgCurrent?.tool === 'claude' ? 'json' : 'toml');
+  CFG_PRE.innerHTML = kind === 'json' ? highlightJson(src) : kind === 'yaml' ? highlightYaml(src) : highlightToml(src);
   CFG_PRE.scrollTop = CFG_TEXT.scrollTop;
+}
+
+// 极简 YAML 高亮：注释 / 键 / 字符串 / 数字 / 布尔 / 列表项
+function highlightYaml(src) {
+  const out = [];
+  for (const raw of src.split('\n')) {
+    const line = raw.trimEnd();
+    if (/^\s*#/.test(line)) { out.push(tokSpan('tok-com', raw) + '\n'); continue; }
+    const m = line.match(/^(\s*)(-\s+)?([\w.$-]+)(:)(\s*)(.*)$/);
+    if (m) {
+      let rest = m[6] || '';
+      let comment = '';
+      const hash = rest.indexOf(' #');
+      if (hash >= 0) { comment = rest.slice(hash); rest = rest.slice(0, hash).trimEnd(); }
+      out.push(escHtml(m[1] + (m[2] || '')));
+      out.push(tokSpan('tok-key', m[3]));
+      out.push(tokSpan('tok-key', ':'));
+      out.push(escHtml(m[5] || ''));
+      if (rest) {
+        if (/^["'].*["']$/.test(rest)) out.push(tokSpan('tok-str', rest));
+        else if (/^-?\d+(\.\d+)?$/.test(rest)) out.push(tokSpan('tok-num', rest));
+        else if (/^(true|false|null|~)$/i.test(rest)) out.push(tokSpan('tok-lit', rest));
+        else out.push(escHtml(rest));
+      }
+      if (comment) out.push(tokSpan('tok-com', comment));
+      out.push('\n');
+      continue;
+    }
+    const li = line.match(/^(\s*)(-\s+)(.*)$/);
+    if (li) {
+      out.push(escHtml(li[1]) + tokSpan('tok-lit', li[2]) + escHtml(li[3]) + '\n');
+      continue;
+    }
+    out.push(escHtml(raw) + '\n');
+  }
+  return out.join('');
 }
 
 async function saveConfigEditor() {
   if (!cfgCurrent) return;
+  if (cfgMasked) { toast('先点「显示密钥」再编辑保存', true); return; }
   CFG_SAVE.disabled = true;
   try {
     const res = await fetch('/api/config-save', {
@@ -2518,6 +2585,7 @@ async function saveConfigEditor() {
       toast(`保存失败：${data.error || ''}`, true);
       return;
     }
+    cfgRaw = CFG_TEXT.value;
     CFG_BACKDROP.hidden = true;
     toast('已保存（原文件已备份）');
     await refresh();
@@ -2949,6 +3017,25 @@ NEW_CANCEL.addEventListener('click', () => { NEW_BACKDROP.hidden = true; });
 NEW_CREATE.addEventListener('click', createNewSession);
 CFG_CANCEL.addEventListener('click', () => { CFG_BACKDROP.hidden = true; });
 CFG_SAVE.addEventListener('click', saveConfigEditor);
+CFG_REVEAL.addEventListener('click', () => {
+  if (!cfgCurrent?.secret) return;
+  if (cfgMasked) {
+    cfgMasked = false;
+    applyCfgMask();
+    CFG_TEXT.focus();
+    return;
+  }
+  // 再点就是隐藏：若有未保存的修改，先确认
+  if (CFG_TEXT.value !== cfgRaw) {
+    showConfirm('隐藏密钥？', '当前有未保存的修改，隐藏后会丢弃这些改动。', () => {
+      cfgMasked = true;
+      applyCfgMask();
+    }, '隐藏');
+    return;
+  }
+  cfgMasked = true;
+  applyCfgMask();
+});
 CFG_TEXT.addEventListener('input', renderCfgPreview);
 CFG_TEXT.addEventListener('scroll', () => {
   CFG_PRE.scrollTop = CFG_TEXT.scrollTop;
