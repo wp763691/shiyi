@@ -6,11 +6,27 @@ import os from 'node:os';
 const DSH_DIR = path.join(os.homedir(), '.dsh');
 
 const FILES = [
-  { tool: 'claude', label: 'Claude Code settings', file: path.join(os.homedir(), '.claude', 'settings.json'), kind: 'json' },
-  { tool: 'codex', label: 'Codex config', file: path.join(os.homedir(), '.codex', 'config.toml'), kind: 'toml' },
+  {
+    tool: 'claude', label: 'Claude Code settings', kind: 'json',
+    file: path.join(os.homedir(), '.claude', 'settings.json'),
+    hint: '模型、权限规则（allow/deny）、hooks、环境变量都在这里',
+  },
+  {
+    tool: 'codex', label: 'Codex config', kind: 'toml',
+    file: path.join(os.homedir(), '.codex', 'config.toml'),
+    hint: '模型、审批策略（approval/sandbox）、MCP 服务器都在这里',
+  },
   // DeepSeek Harness：凭据文件含密钥（前端默认遮罩），设置文件是普通 YAML
-  { tool: 'dsh-credentials', label: 'DeepSeek Harness 凭据', file: path.join(DSH_DIR, '.credentials.yaml'), kind: 'yaml', secret: true, onlyIfDir: DSH_DIR },
-  { tool: 'dsh-settings', label: 'DeepSeek Harness 设置', file: path.join(DSH_DIR, 'settings.yaml'), kind: 'yaml', onlyIfDir: DSH_DIR },
+  {
+    tool: 'dsh-credentials', label: 'DeepSeek Harness 凭据', kind: 'yaml', secret: true,
+    file: path.join(DSH_DIR, '.credentials.yaml'), onlyIfDir: DSH_DIR,
+    hint: '模型密钥等机密（默认遮罩显示；改动会自动重载）',
+  },
+  {
+    tool: 'dsh-settings', label: 'DeepSeek Harness 设置', kind: 'yaml',
+    file: path.join(DSH_DIR, 'settings.yaml'), onlyIfDir: DSH_DIR,
+    hint: 'dsh 自己的界面与行为设置',
+  },
 ];
 
 export async function scanConfigFiles() {
@@ -19,7 +35,7 @@ export async function scanConfigFiles() {
     if (f.onlyIfDir && !existsSync(f.onlyIfDir)) continue;
     const base = {
       tool: f.tool, label: f.label, path: f.file,
-      kind: f.kind, secret: Boolean(f.secret),
+      kind: f.kind, secret: Boolean(f.secret), hint: f.hint || '',
       exists: false, bytes: 0, mtime: null, scope: 'global',
     };
     try {

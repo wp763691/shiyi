@@ -100,6 +100,7 @@ const CFG_CANCEL = document.getElementById('cfgCancel');
 const CFG_SAVE = document.getElementById('cfgSave');
 const CFG_REVEAL = document.getElementById('cfgReveal');
 const CFG_HINT = document.getElementById('cfgHint');
+const CONFIG_NOTE = document.getElementById('configNote');
 let cfgCurrent = null;
 let cfgRaw = '';       // 文件原文（遮罩时也不丢）
 let cfgMasked = false;  // 含密钥的文件默认遮罩显示
@@ -1119,6 +1120,12 @@ function toolTag(x) {
   return el('span', `tag ${toolClsOf(x)}`, label);
 }
 
+// 配置文件的工具标签：dsh 的两个文件要单独显示，别落到 Claude 的兜底上
+function configToolTag(x) {
+  if (String(x.tool || '').startsWith('dsh')) return el('span', 'tag tool-dsh', 'DeepSeek Harness');
+  return toolTag(x);
+}
+
 // 「设置」页顶部的拾忆偏好行：打开/恢复会话时用哪种权限模式
 function renderPrefRow() {
   const cur = (state.prefs || {}).resumePerm || 'original';
@@ -1228,25 +1235,38 @@ function renderLauncherRows() {
 function renderConfig() {
   const all = configView === 'settings' ? state.configFiles || [] : state[configView] || [];
   const list = configFiltered();
-  const titles = { rules: '规则库', mcp: 'MCP 服务器', agents: 'Agents', commands: '斜杠命令', hooks: 'Hooks（只读）', settings: '设置（偏好 / 配置文件）' };
+  const titles = { rules: '规则库', mcp: 'MCP 服务器', agents: 'Agents', commands: '斜杠命令', hooks: 'Hooks（只读）', settings: '设置' };
+  // 每个分区顶部一句话：这是什么、什么时候该改它
+  const notes = {
+    rules: '每次会话都会自动读取的项目约定（CLAUDE.md / AGENTS.md）。想长期改变 agent 的行为就改这里，不用每次在对话里重复要求。',
+    mcp: '给 agent 挂外部工具（代码图谱、浏览器、数据库等）。装了什么、能不能连通都在这里看——Claude 与 Codex 各有一份配置。',
+    agents: '可复用的角色设定（.md 文件）。放进 ~/.claude/agents/ 或 ~/.codex/agents/ 就会出现。',
+    commands: '自定义斜杠命令（.md 文件）。放进 ~/.claude/commands/ 后，在会话里输入 /名字 即可使用。',
+    hooks: '工具调用前后自动执行的命令，例如改完文件自动跑检查。这里只读，改动请编辑对应工具的配置文件。',
+    settings: '上面是拾忆自己的偏好（只影响拾忆）；下面是各工具自己的配置文件，改动会直接影响它们的行为。',
+  };
+  const empties = {
+    rules: '还没有规则文件。在项目根目录放 CLAUDE.md（Claude）或 AGENTS.md（Codex）后就会出现。',
+    mcp: '还没有 MCP 服务器。用 `claude mcp add` 添加，或写进 Codex 的 config.toml。',
+    agents: '还没有 Agent 角色。把 .md 放进 ~/.claude/agents/ 或 ~/.codex/agents/ 后就会出现。',
+    commands: '还没有斜杠命令。把 .md 放进 ~/.claude/commands/ 后就会出现。',
+    hooks: '还没有 Hooks。在 Claude 的 settings.json 里配置后会出现。',
+    settings: '没有可管理的配置文件。',
+  };
   CONFIG_TITLE.textContent = titles[configView] || '配置';
   CONFIG_COUNT.textContent = `${list.length} / ${all.length}`;
+  CONFIG_NOTE.textContent = notes[configView] || '';
+  CONFIG_NOTE.hidden = !CONFIG_NOTE.textContent;
   CONFIG_ROWS.innerHTML = '';
   if (configView === 'settings') {
+    CONFIG_ROWS.appendChild(el('div', 'config-group', '拾忆自己的设置'));
     CONFIG_ROWS.appendChild(renderPrefRow());
     CONFIG_ROWS.appendChild(renderLauncherRows());
+    if (list.length) CONFIG_ROWS.appendChild(el('div', 'config-group', '工具配置文件'));
   }
 
   if (!list.length) {
     const empty = el('div', 'empty');
-    const empties = {
-      rules: '暂无规则文件（CLAUDE.md / AGENTS.md）',
-      mcp: '暂无 MCP 服务器',
-      agents: '暂无 Agent 角色',
-      commands: '暂无斜杠命令',
-      hooks: '暂无 Hooks',
-      settings: '暂无配置文件',
-    };
     empty.textContent = all.length ? '没有匹配的项目' : empties[configView] || '暂无内容';
     CONFIG_ROWS.appendChild(empty);
     return;
@@ -1257,11 +1277,13 @@ function renderConfig() {
     const main = el('div', 'row-main');
     const line1 = el('div', 'row-title');
     line1.textContent = x.kind === 'hook' ? `${x.event}` : x.name || x.label;
-    line1.append(toolTag(x), scopeTag(x));
+    line1.append(configToolTag(x), scopeTag(x));
     if (x.kind === 'hook' && x.matcher) line1.append(el('span', 'tag branch', x.matcher));
     main.appendChild(line1);
 
-    if (x.kind === 'hook' && x.command) {
+    if (configView === 'settings' && x.hint) {
+      main.appendChild(el('div', 'row-preview', x.hint));
+    } else if (x.kind === 'hook' && x.command) {
       const cmd = el('div', 'row-preview');
       cmd.textContent = x.command;
       main.appendChild(cmd);
