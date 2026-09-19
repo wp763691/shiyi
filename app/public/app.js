@@ -1262,7 +1262,7 @@ function renderConfig() {
     CONFIG_ROWS.appendChild(el('div', 'config-group', '拾忆自己的设置'));
     CONFIG_ROWS.appendChild(renderPrefRow());
     CONFIG_ROWS.appendChild(renderLauncherRows());
-    if (list.length) CONFIG_ROWS.appendChild(el('div', 'config-group', '工具配置文件'));
+    if (list.length) CONFIG_ROWS.appendChild(el('div', 'config-group', `工具配置文件 · ${list.length} 个`));
   }
 
   if (!list.length) {

@@ -223,6 +223,7 @@ body.focus-mode.top-hover .topbar {
 .seg {
   display: inline-flex; align-items: center; gap: 2px;
   background: #eceef3; border-radius: 9px; padding: 2px;
+  border: 1px solid var(--line);
 }
 .seg-btn {
   appearance: none; border: none; background: transparent;
@@ -232,7 +233,7 @@ body.focus-mode.top-hover .topbar {
 }
 .seg-btn:hover { color: var(--text); }
 .seg-btn.active {
-  background: #fff; color: var(--text); font-weight: 600;
+  background: #fff; color: var(--accent); font-weight: 600;
   box-shadow: 0 1px 3px rgba(20, 24, 40, 0.12);
 }
 .modal {
@@ -553,8 +554,13 @@ body.resizing-drawer { cursor: col-resize; user-select: none; }
 }
 .config-note[hidden] { display: none; }
 .config-group {
-  padding: 14px 16px 6px; font-size: 11.5px; font-weight: 600;
-  color: #7b8296; letter-spacing: 0.02em;
+  display: flex; align-items: center; gap: 8px;
+  margin: 10px 4px 6px; padding: 9px 14px;
+  font-size: 11.5px; font-weight: 700; color: #46506a;
+  letter-spacing: 0.03em;
+  background: linear-gradient(90deg, #edf1f9, #f8f9fc);
+  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: 8px;
 }
 .tag.tool-dsh { color: #0b6b57; background: #e6f6f0; }
 .cfg-modal { max-width: 860px; }
