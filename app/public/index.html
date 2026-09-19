@@ -264,6 +264,28 @@
       </div>
     </div>
   </div>
+  <div id="pluginBackdrop" class="backdrop" hidden>
+    <div class="modal plugin-modal">
+      <h3>DeepSeek Harness 插件</h3>
+      <p class="modal-text" id="pluginHint"></p>
+      <div class="dir-row">
+        <input id="pluginSearch" class="field-input" autocomplete="off" placeholder="搜索插件…">
+        <button id="pluginSearchLocal" class="btn">搜本地</button>
+        <button id="pluginSearchOnline" class="btn">联网搜索</button>
+      </div>
+      <div id="pluginResults" class="plugin-results"></div>
+      <label class="field-label">自己发现的插件：包名 / GitHub / tarball 地址（本地目录会以 link 方式加入）</label>
+      <div class="dir-row">
+        <input id="pluginCustom" class="field-input mono-input" autocomplete="off" placeholder="例如 dsh-context 或 https://example.com/pkg.tgz">
+        <button id="pluginInstallCustom" class="btn primary">安装</button>
+      </div>
+      <p class="modal-hint">安装走 dsh 自己的 CLI（<code>dsh plugin --profile web add 目标</code>，没有全局 dsh 时用 npx），
+        在内置终端里进行，进度和报错都能看到；它会写入该 profile 的 package.json 与 lockfile。装完点「重启」让 dsh web 生效。</p>
+      <div class="modal-actions">
+        <button id="pluginClose" class="btn">关闭</button>
+      </div>
+    </div>
+  </div>
   <script src="/vendor/xterm/xterm.js"></script>
   <script src="/vendor/xterm/xterm-addon-canvas.js"></script>
   <script src="/app.js"></script>

@@ -23,6 +23,15 @@ const LAUNCHER_CWD = document.getElementById('launcherCwd');
 const LAUNCHER_BROWSE = document.getElementById('launcherBrowse');
 const LAUNCHER_CANCEL = document.getElementById('launcherCancel');
 const LAUNCHER_SAVE = document.getElementById('launcherSave');
+const PLUGIN_BACKDROP = document.getElementById('pluginBackdrop');
+const PLUGIN_HINT = document.getElementById('pluginHint');
+const PLUGIN_SEARCH = document.getElementById('pluginSearch');
+const PLUGIN_SEARCH_LOCAL = document.getElementById('pluginSearchLocal');
+const PLUGIN_SEARCH_ONLINE = document.getElementById('pluginSearchOnline');
+const PLUGIN_RESULTS = document.getElementById('pluginResults');
+const PLUGIN_CUSTOM = document.getElementById('pluginCustom');
+const PLUGIN_INSTALL_CUSTOM = document.getElementById('pluginInstallCustom');
+const PLUGIN_CLOSE = document.getElementById('pluginClose');
 let renameKey = null;
 let showZh = (() => { try { return localStorage.getItem('shiyi.skillLang') !== 'en'; } catch { return true; } })();
 let transCurrent = null;
@@ -1180,11 +1189,20 @@ function renderLauncherRows() {
     const actions = el('div', 'row-actions');
     const run = el('button', 'btn small primary', '启动');
     run.onclick = () => startLauncher(it.id, it.label);
+    actions.append(run);
+    // dsh 的启动命令额外给两个入口：插件管理、重启（装完插件要重启才生效）
+    if ((state.dsh || {}).available && /dsh/i.test(it.command)) {
+      const plug = el('button', 'btn small', '插件…');
+      plug.onclick = () => openPluginDialog();
+      const restart = el('button', 'btn small', '重启');
+      restart.onclick = () => restartLauncher(it);
+      actions.append(plug, restart);
+    }
     const edit = el('button', 'btn small', '编辑');
     edit.onclick = () => openLauncherDialog(it);
     const del = el('button', 'btn small', '删除');
     del.onclick = () => removeLauncher(it);
-    actions.append(run, edit, del);
+    actions.append(edit, del);
     row.appendChild(actions);
     frag.appendChild(row);
   }
@@ -2168,6 +2186,112 @@ async function removeLauncher(it) {
   }
 }
 
+// ---------- dsh 插件（本地 / 联网搜索 + 一键安装）----------
+
+function openPluginDialog() {
+  const dsh = state.dsh || {};
+  PLUGIN_HINT.textContent = dsh.available
+    ? `profile：${dsh.profile || 'web'} · 本地已装 ${dsh.pluginCount || 0} 个包。安装走 dsh 自己的 CLI，装完重启 dsh web 生效。`
+    : '没有检测到 ~/.dsh（DeepSeek Harness）。先跑一次 dsh web 初始化后再来。';
+  PLUGIN_SEARCH.value = '';
+  PLUGIN_CUSTOM.value = '';
+  PLUGIN_BACKDROP.hidden = false;
+  PLUGIN_SEARCH.focus();
+  if (dsh.available) searchPlugins('local');
+  else renderPluginItems([], '没有检测到 dsh');
+}
+
+function renderPluginItems(items, emptyText) {
+  PLUGIN_RESULTS.innerHTML = '';
+  if (!items.length) {
+    PLUGIN_RESULTS.appendChild(el('div', 'plugin-empty', emptyText || '没有结果'));
+    return;
+  }
+  for (const it of items) {
+    const row = el('div', 'plugin-item');
+    const main = el('div', 'pi-main');
+    const nameEl = el('div', 'pi-name');
+    nameEl.textContent = it.name;
+    if (it.version) nameEl.append(el('span', 'pi-ver', it.version));
+    main.appendChild(nameEl);
+    if (it.description) main.appendChild(el('div', 'pi-desc', String(it.description).slice(0, 160)));
+    row.appendChild(main);
+    if (it.installed) {
+      row.appendChild(el('span', 'tag', '已装'));
+    } else {
+      const btn = el('button', 'btn small primary', '安装');
+      btn.onclick = () => { btn.disabled = true; installPlugin(it.name); };
+      row.appendChild(btn);
+    }
+    PLUGIN_RESULTS.appendChild(row);
+  }
+}
+
+async function searchPlugins(scope) {
+  const q = PLUGIN_SEARCH.value.trim();
+  const btn = scope === 'online' ? PLUGIN_SEARCH_ONLINE : PLUGIN_SEARCH_LOCAL;
+  btn.disabled = true;
+  PLUGIN_RESULTS.innerHTML = '';
+  PLUGIN_RESULTS.appendChild(el('div', 'plugin-empty', scope === 'online' ? '正在联网搜索…' : '正在读取本地已装…'));
+  try {
+    const res = await fetch(`/api/plugin-search?scope=${scope}&q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!data.ok) {
+      renderPluginItems([], data.error || '搜索失败');
+      return;
+    }
+    renderPluginItems(data.items, scope === 'online' ? '没有找到相关的 dsh 插件' : '本地没有匹配的已装插件');
+  } catch (e) {
+    renderPluginItems([], `搜索失败：${e.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function installPlugin(target, mode = 'add') {
+  const profile = (state.dsh || {}).profile || 'web';
+  try {
+    toast(`${mode === 'remove' ? '正在卸载' : '正在安装'} ${target} …`);
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'install-plugin', profile, target, mode }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`${mode === 'remove' ? '卸载' : '安装'}失败：${data.error || ''}`, true);
+      return;
+    }
+    PLUGIN_BACKDROP.hidden = true;
+    toast(`已在内置终端开始${mode === 'remove' ? '卸载' : '安装'}，可看进度`);
+    await refresh();
+    handleEmbeddedOpen(data.name);
+  } catch (e) {
+    toast(`操作失败：${e.message}`, true);
+  }
+}
+
+async function restartLauncher(it) {
+  try {
+    toast(`正在重启 ${it.label} …`);
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'launch-custom', id: it.id, restart: true }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`重启失败：${data.error || ''}`, true);
+      return;
+    }
+    toast(`已重启 ${data.name}`);
+    await refresh();
+    handleEmbeddedOpen(data.name);
+  } catch (e) {
+    toast(`重启失败：${e.message}`, true);
+  }
+}
+
 function openTransEditor(skill, tr) {
   transCurrent = skill;
   TRANS_TITLE.textContent = `修正译文 · ${skill.name}`;
@@ -2590,6 +2714,7 @@ function stateSigOf(s) {
     s.sessionNames,
     s.prefs,
     s.launchers,
+    s.dsh,
     // 翻译只取会影响显示的几个字段（updatedAt 这类元数据每次都可能不同）
     s.skillTranslations
       ? Object.entries(s.skillTranslations).map(([k, v]) => [k, v?.nameZh || '', v?.descZh || '', v?.locked === true])
@@ -2789,6 +2914,17 @@ RENAME_CANCEL.addEventListener('click', () => { RENAME_BACKDROP.hidden = true; }
 RENAME_SAVE.addEventListener('click', saveRenameDialog);
 LAUNCHER_CANCEL.addEventListener('click', () => { LAUNCHER_BACKDROP.hidden = true; launcherEditing = null; });
 LAUNCHER_SAVE.addEventListener('click', saveLauncherDialog);
+PLUGIN_CLOSE.addEventListener('click', () => { PLUGIN_BACKDROP.hidden = true; });
+PLUGIN_SEARCH_LOCAL.addEventListener('click', () => searchPlugins('local'));
+PLUGIN_SEARCH_ONLINE.addEventListener('click', () => searchPlugins('online'));
+PLUGIN_SEARCH.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); searchPlugins('local'); }
+});
+PLUGIN_INSTALL_CUSTOM.addEventListener('click', () => {
+  const t = PLUGIN_CUSTOM.value.trim();
+  if (!t) return toast('请填写包名或安装地址', true);
+  installPlugin(t);
+});
 LAUNCHER_BROWSE.addEventListener('click', async () => {
   LAUNCHER_BROWSE.disabled = true;
   try {

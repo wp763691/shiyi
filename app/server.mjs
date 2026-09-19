@@ -31,6 +31,7 @@ import {
 import { loadSessionNames, setSessionName } from './lib/names.mjs';
 import { loadPrefs, setPref } from './lib/prefs.mjs';
 import { loadLaunchers, saveLauncher, deleteLauncher } from './lib/launchers.mjs';
+import { detectDsh, scanLocalPlugins, searchOnline, validInstallTarget, validProfile, dshPluginCommand } from './lib/dshplugins.mjs';
 import {
   openTmuxTerminal,
   writeTerminalInput,
@@ -302,6 +303,7 @@ async function buildState() {
     sessionNames: await loadSessionNames(),
     prefs: loadPrefs(),
     launchers: await loadLaunchers(),
+    dsh: await detectDsh(),
     homeDir: os.homedir(),
     errors,
     now: Date.now(),
@@ -386,6 +388,7 @@ function demoState() {
     prefs: loadPrefs(),
     // 演示数据里也给一条启动命令，方便截图/试用（不写用户文件）
     launchers: demoLaunchers.map((x) => ({ ...x })),
+    dsh: { available: false, profile: 'web', pluginCount: 0, bundles: [] },
     rules: [
       { kind: 'rule', name: 'CLAUDE.md', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/CLAUDE.md', lines: 42, mtime: now - 3600000, preview: '团队规范：默认英文注释，提交信息遵循 Conventional Commits…' },
       { kind: 'rule', name: 'AGENTS.md', tool: 'codex', scope: 'global', path: '/Users/demo/.codex/AGENTS.md', lines: 20, mtime: now - 7200000, preview: 'Codex 通用守则…' },
@@ -462,6 +465,50 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      // 安装 / 卸载 dsh 插件：复用 tmux + 内置终端，进度和报错都能直接看到
+      if (body.action === 'install-plugin') {
+        try {
+          const profile = validProfile(body.profile) ? String(body.profile) : 'web';
+          const target = String(body.target || '').trim();
+          if (!validInstallTarget(target)) {
+            sendJson(res, 400, { ok: false, error: '安装目标不合法（包名或地址，不能含空格，不能以 - 开头）' });
+            return;
+          }
+          const tmux = await tmuxBin();
+          if (!tmux) {
+            sendJson(res, 400, { ok: false, error: '未安装 tmux，请先运行：brew install tmux' });
+            return;
+          }
+          const mode = body.mode === 'remove' ? 'remove' : 'add';
+          const cmd = await dshPluginCommand(mode, profile, target);
+          const dir = path.join(os.homedir(), '.dsh', 'profiles', profile);
+          const short = target.replace(/^@[^/]+\//, '').replace(/[^\w.-]/g, '').slice(0, 16) || 'plugin';
+          const name = normalizeSessionName(`dsh-${mode === 'remove' ? '卸载' : '安装'}-${short}`) || 'dsh-plugin';
+          // 同名会话先结束，保证看到的是本次操作的输出
+          await execFileP(tmux, ['kill-session', '-t', name], { timeout: 4000 }).catch(() => {});
+          const script = path.join(os.tmpdir(), `shiyi-plugin-${name.replace(/[^\w.-]/g, '_')}.sh`);
+          await writeFile(
+            script,
+            [
+              '#!/bin/bash',
+              `cd -- ${shq(dir)} || exit 1`,
+              `echo "[拾忆] ${cmd}"`,
+              cmd,
+              '__shiyi_code=$?',
+              'if [ $__shiyi_code -eq 0 ]; then printf "\\n[拾忆] 完成。重启 dsh web 后生效（可用拾忆里的「重启」按钮）。\\n"; fi',
+              'if [ $__shiyi_code -ne 0 ]; then printf "\\n[拾忆] 失败（退出码 %s），按回车关闭窗口\\n" "$__shiyi_code"; read; fi',
+              '',
+            ].join('\n'),
+            { mode: 0o700 }
+          );
+          await execFileP(tmux, ['new-session', '-d', '-s', name, '-c', dir, `/bin/bash ${script}`], { timeout: 8000 });
+          await ensureTmuxScrollOptions(name);
+          sendJson(res, 200, { ok: true, name, cmd, profile, target, mode });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e).slice(0, 200) });
+        }
+        return;
+      }
       if (body.action === 'save-launcher') {
         try {
           if (process.env.SHIYI_DEMO === '1') {
@@ -516,13 +563,22 @@ const server = http.createServer(async (req, res) => {
             return;
           }
           const name = normalizeSessionName(it.label) || `cmd-${it.id}`;
-          // 已在跑就复用，避免重复起服务（例如 dsh web 抢端口）
+          // 已在跑就复用，避免重复起服务（例如 dsh web 抢端口）；restart 则先结束再起
+          let exists = false;
           try {
             await execFileP(tmux, ['has-session', '-t', name], { timeout: 4000 });
+            exists = true;
+          } catch { exists = false; }
+          if (exists && body.restart) {
+            await execFileP(tmux, ['kill-session', '-t', name], { timeout: 6000 }).catch(() => {});
+            await new Promise((r) => setTimeout(r, 700));
+            exists = false;
+          }
+          if (exists) {
             await ensureTmuxScrollOptions(name);
             sendJson(res, 200, { ok: true, name, reused: true });
             return;
-          } catch { /* 不存在，继续启动 */ }
+          }
 
           let dir = os.homedir();
           for (const cand of [it.cwd, String(body.dir || '')]) {
@@ -1057,6 +1113,29 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/api/debug') {
       sendJson(res, 200, { ok: true, logs: debugLogs });
+      return;
+    }
+    // dsh 插件搜索：scope=local 走本地已装清单，scope=online 查 npm registry
+    if (req.method === 'GET' && url.pathname === '/api/plugin-search') {
+      const q = String(url.searchParams.get('q') || '').trim().toLowerCase();
+      const scope = url.searchParams.get('scope') === 'online' ? 'online' : 'local';
+      if (scope === 'online') {
+        const out = await searchOnline(q);
+        if (!out.ok) { sendJson(res, 200, { ok: false, scope, error: out.error }); return; }
+        const installed = new Set((await scanLocalPlugins()).map((x) => x.name));
+        sendJson(res, 200, {
+          ok: true,
+          scope,
+          items: out.items.map((x) => ({ ...x, installed: installed.has(x.name) })),
+        });
+        return;
+      }
+      const all = await scanLocalPlugins();
+      const items = all
+        .filter((x) => /dsh|deepseek|harness/i.test(`${x.name} ${x.description}`))
+        .filter((x) => !q || x.name.toLowerCase().includes(q) || String(x.description).toLowerCase().includes(q))
+        .slice(0, 200);
+      sendJson(res, 200, { ok: true, scope, total: all.length, items });
       return;
     }
     if (req.method === 'GET' && url.pathname === '/api/config-file') {
