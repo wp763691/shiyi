@@ -529,6 +529,8 @@ body.resizing-drawer { cursor: col-resize; user-select: none; }
 .field-input:focus { border-color: rgba(52, 85, 209, 0.45); box-shadow: 0 0 0 3px rgba(52, 85, 209, 0.08); }
 .dir-row { display: flex; gap: 8px; }
 .dir-row select { flex: 1; min-width: 0; }
+.dir-row .field-input { flex: 1; min-width: 0; }
+.mono-input { font-family: var(--mono); font-size: 12px; }
 .cfg-modal { max-width: 860px; }
 .cfg-code { position: relative; }
 .code-pre {

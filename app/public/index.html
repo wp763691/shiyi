@@ -245,6 +245,25 @@
       </div>
     </div>
   </div>
+  <div id="launcherBackdrop" class="backdrop" hidden>
+    <div class="modal">
+      <h3 id="launcherTitle">新增启动命令</h3>
+      <p class="modal-text">把一条长命令变成拾忆里的一键入口。它会作为 tmux 会话运行，因此能在「运行中」看到、用内置终端看日志、也能终止。</p>
+      <label class="field-label">名称（同时作为 tmux 会话名）</label>
+      <input id="launcherLabel" class="field-input" autocomplete="off" placeholder="例如 dsh web">
+      <label class="field-label">命令</label>
+      <input id="launcherCommand" class="field-input mono-input" autocomplete="off" placeholder="例如 npx -y @deepseek-ai/dsh@latest web">
+      <label class="field-label">工作目录（留空 = 主目录）</label>
+      <div class="dir-row">
+        <input id="launcherCwd" class="field-input" autocomplete="off" placeholder="/Users/you/code/project">
+        <button type="button" id="launcherBrowse" class="btn">浏览…</button>
+      </div>
+      <div class="modal-actions">
+        <button id="launcherCancel" class="btn">取消</button>
+        <button id="launcherSave" class="btn primary">保存</button>
+      </div>
+    </div>
+  </div>
   <script src="/vendor/xterm/xterm.js"></script>
   <script src="/vendor/xterm/xterm-addon-canvas.js"></script>
   <script src="/app.js"></script>

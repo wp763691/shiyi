@@ -15,6 +15,14 @@ const RENAME_BACKDROP = document.getElementById('renameBackdrop');
 const RENAME_INPUT = document.getElementById('renameInput');
 const RENAME_CANCEL = document.getElementById('renameCancel');
 const RENAME_SAVE = document.getElementById('renameSave');
+const LAUNCHER_BACKDROP = document.getElementById('launcherBackdrop');
+const LAUNCHER_TITLE = document.getElementById('launcherTitle');
+const LAUNCHER_LABEL = document.getElementById('launcherLabel');
+const LAUNCHER_COMMAND = document.getElementById('launcherCommand');
+const LAUNCHER_CWD = document.getElementById('launcherCwd');
+const LAUNCHER_BROWSE = document.getElementById('launcherBrowse');
+const LAUNCHER_CANCEL = document.getElementById('launcherCancel');
+const LAUNCHER_SAVE = document.getElementById('launcherSave');
 let renameKey = null;
 let showZh = (() => { try { return localStorage.getItem('shiyi.skillLang') !== 'en'; } catch { return true; } })();
 let transCurrent = null;
@@ -1151,6 +1159,50 @@ function renderPrefRow() {
   return row;
 }
 
+// 「设置」页的启动命令列表：每条可启动/编辑/删除，末尾可新增
+function renderLauncherRows() {
+  const frag = document.createDocumentFragment();
+  for (const it of state.launchers || []) {
+    const row = el('div', 'row config-row');
+    const main = el('div', 'row-main');
+    const line1 = el('div', 'row-title');
+    line1.textContent = it.label;
+    line1.append(el('span', 'tag', '启动命令'));
+    main.appendChild(line1);
+    const cmd = el('div', 'row-preview mono-input');
+    cmd.textContent = it.command;
+    main.appendChild(cmd);
+    const meta = el('div', 'row-meta');
+    meta.append(el('span', 'chip path', it.cwd && it.cwd.startsWith('/') ? it.cwd : '主目录'));
+    main.appendChild(meta);
+    row.appendChild(main);
+
+    const actions = el('div', 'row-actions');
+    const run = el('button', 'btn small primary', '启动');
+    run.onclick = () => startLauncher(it.id, it.label);
+    const edit = el('button', 'btn small', '编辑');
+    edit.onclick = () => openLauncherDialog(it);
+    const del = el('button', 'btn small', '删除');
+    del.onclick = () => removeLauncher(it);
+    actions.append(run, edit, del);
+    row.appendChild(actions);
+    frag.appendChild(row);
+  }
+
+  const addRow = el('div', 'row config-row');
+  const addMain = el('div', 'row-main');
+  addMain.appendChild(el('div', 'row-title', '新增启动命令'));
+  addMain.appendChild(el('div', 'row-preview', '把任意长命令变成一键入口：点「＋」就能启动，例如 dsh web 或某个本地服务。'));
+  addRow.appendChild(addMain);
+  const addActions = el('div', 'row-actions');
+  const add = el('button', 'btn small primary', '＋ 新增');
+  add.onclick = () => openLauncherDialog(null);
+  addActions.appendChild(add);
+  addRow.appendChild(addActions);
+  frag.appendChild(addRow);
+  return frag;
+}
+
 function renderConfig() {
   const all = configView === 'settings' ? state.configFiles || [] : state[configView] || [];
   const list = configFiltered();
@@ -1158,7 +1210,10 @@ function renderConfig() {
   CONFIG_TITLE.textContent = titles[configView] || '配置';
   CONFIG_COUNT.textContent = `${list.length} / ${all.length}`;
   CONFIG_ROWS.innerHTML = '';
-  if (configView === 'settings') CONFIG_ROWS.appendChild(renderPrefRow());
+  if (configView === 'settings') {
+    CONFIG_ROWS.appendChild(renderPrefRow());
+    CONFIG_ROWS.appendChild(renderLauncherRows());
+  }
 
   if (!list.length) {
     const empty = el('div', 'empty');
@@ -1999,6 +2054,120 @@ async function browseDir() {
   }
 }
 
+// ---------- 自定义启动命令 ----------
+
+// ＋ 按钮：有自定义启动命令时先弹菜单，否则维持原来的"直接新建会话"
+function openNewSessionMenu(anchor) {
+  const items = state.launchers || [];
+  if (!items.length) { openNewSession(); return; }
+  const menuItems = [{ label: '新建 Claude / Codex 会话…', fn: () => openNewSession() }, { sep: true }];
+  for (const it of items) {
+    menuItems.push({ label: `启动 ${it.label}`, fn: () => startLauncher(it.id, it.label) });
+  }
+  menuItems.push({ sep: true }, {
+    label: '管理启动命令…',
+    fn: () => { activateTab('config'); configView = 'settings'; syncConfigViewBtns(); renderConfig(); },
+  });
+  showSimpleMenu(anchor, menuItems);
+}
+
+async function startLauncher(id, label) {
+  try {
+    toast(`正在启动 ${label} …`);
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'launch-custom', id, dir: lastDir() }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`启动失败：${data.error || ''}`, true);
+      return;
+    }
+    toast(data.reused ? `${data.name} 已在运行，切过去` : `已启动 ${data.name}`);
+    await refresh();
+    handleEmbeddedOpen(data.name);
+  } catch (e) {
+    toast(`启动失败：${e.message}`, true);
+  }
+}
+
+function lastDir() {
+  try { return localStorage.getItem('shiyi.lastDir') || ''; } catch { return ''; }
+}
+
+function syncConfigViewBtns() {
+  for (const b of CONFIG_VIEW_BTNS) b.classList.toggle('active', b.dataset.cview === configView);
+}
+
+let launcherEditing = null;
+
+function openLauncherDialog(launcher) {
+  launcherEditing = launcher || null;
+  LAUNCHER_TITLE.textContent = launcher ? '编辑启动命令' : '新增启动命令';
+  LAUNCHER_LABEL.value = launcher?.label || '';
+  LAUNCHER_COMMAND.value = launcher?.command || '';
+  LAUNCHER_CWD.value = launcher?.cwd && launcher.cwd.startsWith('/') ? launcher.cwd : '';
+  LAUNCHER_BACKDROP.hidden = false;
+  LAUNCHER_LABEL.focus();
+}
+
+async function saveLauncherDialog() {
+  const label = LAUNCHER_LABEL.value.trim();
+  const command = LAUNCHER_COMMAND.value.trim();
+  if (!label) return toast('名称不能为空', true);
+  if (!command) return toast('命令不能为空', true);
+  if (/[\r\n]/.test(command)) return toast('命令不能包含换行；多步请用 && 连接', true);
+  LAUNCHER_SAVE.disabled = true;
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save-launcher',
+        launcher: {
+          id: launcherEditing?.id || '',
+          label,
+          command,
+          cwd: LAUNCHER_CWD.value.trim(),
+        },
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`保存失败：${data.error || ''}`, true);
+      return;
+    }
+    LAUNCHER_BACKDROP.hidden = true;
+    toast(`已保存：${data.launcher.label}`);
+    launcherEditing = null;
+    await refresh();
+  } catch (e) {
+    toast(`保存失败：${e.message}`, true);
+  } finally {
+    LAUNCHER_SAVE.disabled = false;
+  }
+}
+
+async function removeLauncher(it) {
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete-launcher', id: it.id }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      toast(`删除失败：${data.error || ''}`, true);
+      return;
+    }
+    toast(`已删除：${it.label}`);
+    await refresh();
+  } catch (e) {
+    toast(`删除失败：${e.message}`, true);
+  }
+}
+
 function openTransEditor(skill, tr) {
   transCurrent = skill;
   TRANS_TITLE.textContent = `修正译文 · ${skill.name}`;
@@ -2420,6 +2589,7 @@ function stateSigOf(s) {
       .map((k) => [k.path || k.name, k.kind, k.scope, minute(k.mtime), k.lines, k.preview]),
     s.sessionNames,
     s.prefs,
+    s.launchers,
     // 翻译只取会影响显示的几个字段（updatedAt 这类元数据每次都可能不同）
     s.skillTranslations
       ? Object.entries(s.skillTranslations).map(([k, v]) => [k, v?.nameZh || '', v?.descZh || '', v?.locked === true])
@@ -2557,7 +2727,7 @@ DRAWER_RESIZER.addEventListener('pointerdown', (e) => {
   document.addEventListener('pointermove', onMove);
   document.addEventListener('pointerup', onUp);
 });
-TERM_NEW.addEventListener('click', openNewSession);
+TERM_NEW.addEventListener('click', (e) => openNewSessionMenu(e.currentTarget));
 TERM_CLEAR.addEventListener('click', clearActiveTerm);
 TERM_HISTORY.addEventListener('click', enterHistoryMode);
 SKILL_MORE.addEventListener('click', (e) => {
@@ -2617,9 +2787,27 @@ TRANS_CANCEL.addEventListener('click', () => { TRANS_BACKDROP.hidden = true; });
 TRANS_SAVE.addEventListener('click', saveTransEditor);
 RENAME_CANCEL.addEventListener('click', () => { RENAME_BACKDROP.hidden = true; });
 RENAME_SAVE.addEventListener('click', saveRenameDialog);
+LAUNCHER_CANCEL.addEventListener('click', () => { LAUNCHER_BACKDROP.hidden = true; launcherEditing = null; });
+LAUNCHER_SAVE.addEventListener('click', saveLauncherDialog);
+LAUNCHER_BROWSE.addEventListener('click', async () => {
+  LAUNCHER_BROWSE.disabled = true;
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'pick-dir' }),
+    });
+    const data = await res.json();
+    if (data.ok && !data.canceled && data.dir) LAUNCHER_CWD.value = data.dir;
+  } catch (e) {
+    toast(`选择目录失败：${e.message}`, true);
+  } finally {
+    LAUNCHER_BROWSE.disabled = false;
+  }
+});
 RENAME_INPUT.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveRenameDialog(); } });
-document.getElementById('drawerNew').addEventListener('click', openNewSession);
-document.getElementById('emptyNew').addEventListener('click', openNewSession);
+document.getElementById('drawerNew').addEventListener('click', (e) => openNewSessionMenu(e.currentTarget));
+document.getElementById('emptyNew').addEventListener('click', (e) => openNewSessionMenu(e.currentTarget));
 DIR_BROWSE.addEventListener('click', browseDir);
 NEW_CANCEL.addEventListener('click', () => { NEW_BACKDROP.hidden = true; });
 NEW_CREATE.addEventListener('click', createNewSession);

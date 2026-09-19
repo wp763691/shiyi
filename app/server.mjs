@@ -30,6 +30,7 @@ import {
 } from './lib/translations.mjs';
 import { loadSessionNames, setSessionName } from './lib/names.mjs';
 import { loadPrefs, setPref } from './lib/prefs.mjs';
+import { loadLaunchers, saveLauncher, deleteLauncher } from './lib/launchers.mjs';
 import {
   openTmuxTerminal,
   writeTerminalInput,
@@ -65,6 +66,10 @@ const execFileP = promisify(execFile);
 
 // 演示模式下的别名只存内存，避免污染用户真实的 ~/.shiyi/session-names.json
 const demoSessionNames = {};
+// 演示模式的启动命令同理：只存内存，不写用户的 ~/.shiyi/launchers.json
+const demoLaunchers = [
+  { id: 'dsh-web', label: 'DeepSeek Harness (web)', command: 'npx -y @deepseek-ai/dsh@latest web', cwd: '' },
+];
 
 // 单引号包裹的 shell 字面量（用于生成临时启动脚本）
 function shq(s) {
@@ -296,6 +301,7 @@ async function buildState() {
     translationStats: await translationStats(skills),
     sessionNames: await loadSessionNames(),
     prefs: loadPrefs(),
+    launchers: await loadLaunchers(),
     homeDir: os.homedir(),
     errors,
     now: Date.now(),
@@ -378,6 +384,8 @@ function demoState() {
     translationStats: { total: 8, translated: 7 },
     sessionNames: { ...demoSessionNames },
     prefs: loadPrefs(),
+    // 演示数据里也给一条启动命令，方便截图/试用（不写用户文件）
+    launchers: demoLaunchers.map((x) => ({ ...x })),
     rules: [
       { kind: 'rule', name: 'CLAUDE.md', tool: 'claude', scope: 'global', path: '/Users/demo/.claude/CLAUDE.md', lines: 42, mtime: now - 3600000, preview: '团队规范：默认英文注释，提交信息遵循 Conventional Commits…' },
       { kind: 'rule', name: 'AGENTS.md', tool: 'codex', scope: 'global', path: '/Users/demo/.codex/AGENTS.md', lines: 20, mtime: now - 7200000, preview: 'Codex 通用守则…' },
@@ -451,6 +459,97 @@ const server = http.createServer(async (req, res) => {
           sendJson(res, out.ok ? 200 : 400, out);
         } catch (e) {
           sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+      if (body.action === 'save-launcher') {
+        try {
+          if (process.env.SHIYI_DEMO === '1') {
+            const input = body.launcher || {};
+            const id = String(input.id || '').trim() || `cmd-${Date.now().toString(36)}`;
+            const label = String(input.label || '').trim();
+            const command = String(input.command || '').trim();
+            if (!label || !command) {
+              sendJson(res, 400, { ok: false, error: '名称和命令都不能为空' });
+              return;
+            }
+            const idx = demoLaunchers.findIndex((x) => x.id === id);
+            const next = { id, label, command, cwd: String(input.cwd || '').trim() };
+            if (idx >= 0) demoLaunchers[idx] = next;
+            else demoLaunchers.push(next);
+            sendJson(res, 200, { ok: true, launcher: next });
+            return;
+          }
+          const out = await saveLauncher(body.launcher || {});
+          sendJson(res, out.ok ? 200 : 400, out);
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+      if (body.action === 'delete-launcher') {
+        try {
+          if (process.env.SHIYI_DEMO === '1') {
+            const i = demoLaunchers.findIndex((x) => x.id === String(body.id || ''));
+            if (i >= 0) demoLaunchers.splice(i, 1);
+            sendJson(res, 200, { ok: true });
+            return;
+          }
+          sendJson(res, 200, await deleteLauncher(String(body.id || '')));
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+      // 启动一条自定义命令：跑在 tmux 里，于是自动获得"运行中"列表 / 内置终端 / 终止 / 内存统计
+      if (body.action === 'launch-custom') {
+        try {
+          const items = process.env.SHIYI_DEMO === '1' ? demoLaunchers : await loadLaunchers();
+          const it = items.find((x) => x.id === String(body.id || ''));
+          if (!it) {
+            sendJson(res, 400, { ok: false, error: '找不到这条启动命令' });
+            return;
+          }
+          const tmux = await tmuxBin();
+          if (!tmux) {
+            sendJson(res, 400, { ok: false, error: '未安装 tmux，请先运行：brew install tmux' });
+            return;
+          }
+          const name = normalizeSessionName(it.label) || `cmd-${it.id}`;
+          // 已在跑就复用，避免重复起服务（例如 dsh web 抢端口）
+          try {
+            await execFileP(tmux, ['has-session', '-t', name], { timeout: 4000 });
+            await ensureTmuxScrollOptions(name);
+            sendJson(res, 200, { ok: true, name, reused: true });
+            return;
+          } catch { /* 不存在，继续启动 */ }
+
+          let dir = os.homedir();
+          for (const cand of [it.cwd, String(body.dir || '')]) {
+            if (cand && cand.startsWith('/')) {
+              const st = await stat(cand).catch(() => null);
+              if (st && st.isDirectory()) { dir = cand; break; }
+            }
+          }
+          // 写进临时脚本再交给 tmux：这样 && 、管道、引号都能按预期工作
+          const script = path.join(os.tmpdir(), `shiyi-launch-${it.id.replace(/[^\w.-]/g, '_')}.sh`);
+          await writeFile(
+            script,
+            [
+              '#!/bin/bash',
+              `cd -- ${shq(dir)} || exit 1`,
+              it.command,
+              '__shiyi_code=$?',
+              'if [ $__shiyi_code -ne 0 ]; then printf "\\n[拾忆] 命令退出码 %s，按回车关闭窗口\\n" "$__shiyi_code"; read; fi',
+              '',
+            ].join('\n'),
+            { mode: 0o700 }
+          );
+          await execFileP(tmux, ['new-session', '-d', '-s', name, '-c', dir, `/bin/bash ${script}`], { timeout: 8000 });
+          await ensureTmuxScrollOptions(name);
+          sendJson(res, 200, { ok: true, name, dir, reused: false });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e).slice(0, 200) });
         }
         return;
       }
