@@ -556,10 +556,11 @@ body.resizing-drawer { cursor: col-resize; user-select: none; }
 .config-group {
   display: flex; align-items: center; gap: 8px;
   margin: 10px 4px 6px; padding: 9px 14px;
-  font-size: 11.5px; font-weight: 700; color: #46506a;
+  font-size: 11.5px; font-weight: 700; color: #14604f;
   letter-spacing: 0.03em;
-  background: linear-gradient(90deg, #edf1f9, #f8f9fc);
-  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  /* 与 app logo（薄荷汽水）同色系 */
+  background: linear-gradient(90deg, #dcf7ee, #f2fdf9);
+  border: 1px solid #c6ece0; border-left: 3px solid #45d2b2;
   border-radius: 8px;
 }
 .tag.tool-dsh { color: #0b6b57; background: #e6f6f0; }
