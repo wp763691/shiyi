@@ -773,6 +773,55 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      // 就地重启一个会话，并以"全自动"权限恢复：
+      // 先结束原实例（tmux 会话或进程，避免两个进程写同一份 transcript），再用 resume + 全自动参数重起
+      if (body.action === 'restart-session') {
+        try {
+          const tool = body.tool === 'codex' ? 'codex' : 'claude';
+          const sid = String(body.sessionId || '').trim();
+          if (!/^[0-9a-f-]{16,}$/i.test(sid)) {
+            sendJson(res, 400, { ok: false, error: '缺少有效的会话 ID' });
+            return;
+          }
+          const tmux = await tmuxBin();
+          if (!tmux) {
+            sendJson(res, 400, { ok: false, error: '未安装 tmux，请先运行：brew install tmux' });
+            return;
+          }
+          let dir = String(body.cwd || '').trim();
+          const st = dir ? await stat(dir).catch(() => null) : null;
+          if (!st || !st.isDirectory()) dir = os.homedir();
+
+          const mode = tool === 'codex' ? 'never' : 'bypassPermissions';
+          const oldName = normalizeSessionName(body.tmuxName || '');
+          if (oldName) {
+            await execFileP(tmux, ['kill-session', '-t', oldName], { timeout: 6000 }).catch(() => {});
+          } else if (body.pid) {
+            await terminateProcess(body.pid);
+          }
+          await new Promise((r) => setTimeout(r, 900));
+
+          const base = normalizeSessionName(body.name || '') || `${tool}-${sid.slice(0, 8)}`;
+          let name = base;
+          for (let i = 2; i < 30; i += 1) {
+            try {
+              await execFileP(tmux, ['has-session', '-t', name], { timeout: 4000 });
+              name = `${base}-${i}`;
+            } catch {
+              break;
+            }
+          }
+          const cmd = tool === 'codex'
+            ? `codex${permArgs('codex', mode)} resume ${sid}`
+            : `claude --resume ${sid}${permArgs('claude', mode)}`;
+          await execFileP(tmux, ['new-session', '-d', '-s', name, '-c', dir, cmd], { timeout: 8000 });
+          await ensureTmuxScrollOptions(name);
+          sendJson(res, 200, { ok: true, name, dir, tool, permMode: mode, cmd });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e?.message || e).slice(0, 200) });
+        }
+        return;
+      }
       if (body.action === 'adopt-session') {
         try {
           const tool = body.tool === 'codex' ? 'codex' : 'claude';

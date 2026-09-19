@@ -585,6 +585,14 @@ function showRowMenu(anchor, w) {
   }
   item(getOpenMode() === 'embedded' ? '在 iTerm 中打开（外置终端）' : '在内置终端打开', () => openOtherWay(w));
   item('设置别名', () => openRenameDialog(liveRenameKeys(w), liveTitle(w)));
+  if (w.session?.sessionId) item('重启（全自动）', () => restartFullAuto({
+    tool: w.session.tool || w.tool,
+    sessionId: w.session.sessionId,
+    cwd: w.session.cwd || w.cwd,
+    name: w.tmux ? w.sessionName : liveTitle(w),
+    tmuxName: w.tmux ? w.sessionName : '',
+    pid: w.tmux ? 0 : (w.procPid || 0),
+  }));
   item('终止会话', () => terminateRow(w), true);
   document.body.appendChild(menu);
   const r = anchor.getBoundingClientRect();
@@ -597,6 +605,49 @@ function showRowMenu(anchor, w) {
 }
 
 let adopting = false;
+
+// 就地重启会话并以全自动权限恢复（Claude: bypassPermissions / Codex: --yolo）
+let restarting = false;
+function restartFullAuto({ tool, sessionId, cwd, name, tmuxName, pid }) {
+  if (restarting) return;
+  const flag = tool === 'codex' ? '--yolo' : '--permission-mode bypassPermissions';
+  const where = tmuxName
+    ? `tmux 会话「${tmuxName}」会被结束`
+    : pid
+      ? '当前进程会被结束（外置终端窗口随之关闭）'
+      : '该会话当前没有运行中的进程，将直接打开';
+  showConfirm(
+    `重启为全自动？${name ? `\n${name}` : ''}`,
+    `将用 ${flag} 恢复同一个会话，对话历史完整保留，并在内置终端打开。\n`
+      + `${where}；重启后不再逐条确认权限，命令会直接执行。`,
+    async () => {
+      restarting = true;
+      try {
+        const res = await fetch('/api/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'restart-session', tool, sessionId, cwd, name, tmuxName, pid,
+          }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          toast(`重启失败：${data.error || ''}`, true);
+          return;
+        }
+        if (tmuxName && termSessions.some((r) => r.name === tmuxName)) closeTermTab(tmuxName);
+        toast(`已用全自动权限重启：${data.name}`);
+        await refresh();
+        handleEmbeddedOpen(data.name);
+      } catch (e) {
+        toast(`重启失败：${e.message}`, true);
+      } finally {
+        restarting = false;
+      }
+    },
+    '重启为全自动'
+  );
+}
 
 function getOpenMode() {
   try { return localStorage.getItem('shiyi.openMode') === 'iterm' ? 'iterm' : 'embedded'; } catch { return 'embedded'; }
@@ -883,6 +934,17 @@ function renderHistory() {
       {
         label: '在 iTerm 中打开（外置终端）',
         fn: () => act({ action: 'resume', sessionId: s.sessionId, cwd: s.cwd, tool: s.tool, recordedPerm: recordedPermFor(s.tool, s.sessionId) }),
+      },
+      {
+        label: '用全自动打开',
+        fn: () => restartFullAuto({
+          tool: s.tool,
+          sessionId: s.sessionId,
+          cwd: s.cwd,
+          name: customName([sessionKeyFor(s.tool, s.sessionId)], s.title),
+          tmuxName: '',
+          pid: 0,
+        }),
       },
       { sep: true },
       {
