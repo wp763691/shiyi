@@ -1620,6 +1620,7 @@ function renderTermTabs() {
       e.stopPropagation();
       const items = [];
       if (rec.cwd) items.push({ label: '打开会话目录', fn: () => act({ action: 'open', reveal: true, path: rec.cwd }) });
+      items.push({ label: '重新连接', fn: () => reconnectTerminal(rec.name) });
       items.push({ label: '设置显示别名', fn: () => openRenameDialog(tmuxTabKeys(rec.name), tmuxTabTitle(rec.name), 'alias') });
       showSimpleMenu(btn, items);
     };
@@ -1659,6 +1660,14 @@ async function restoreOpenTabs() {
 function activateTerminal(name) {
   const rec = termSessions.find((r) => r.name === name);
   if (!rec) return;
+  // 视图已经建立过、但连接断了（tmux 还在后台）——点它应该重连，
+  // 否则只会切到一个死掉的终端，看起来就是"连不上"
+  if (rec.id && !rec.alive && !rec.reconnecting) {
+    dbg(`activateTerminal: ${name} 已断开，自动重连`);
+    rec.reconnecting = true;
+    reconnectTerminal(name);
+    return;
+  }
   activeTermName = name;
   for (const r of termSessions) {
     r.slot.style.display = r.name === name ? 'block' : 'none';
@@ -1667,6 +1676,11 @@ function activateTerminal(name) {
   rec.term.focus();
   updateTermStatus();
   fitActiveTerminal();
+}
+
+function reconnectTerminal(name) {
+  closeTermTab(name);
+  openEmbeddedTmux(name).catch((e) => toast(`重连失败：${e.message}`, true));
 }
 
 function termTheme() {
@@ -1695,7 +1709,11 @@ async function openEmbeddedTmux(name) {
   toast(`正在连接 tmux · ${name} …`);
   STATUS_LEFT.textContent = `打开 ${name}：初始化…`;
   const exists = termSessions.find((r) => r.name === name);
-  if (exists) { activateTerminal(name); STATUS_LEFT.textContent = `tmux · ${name} · 已打开已有视图`; return; }
+  if (exists) {
+    activateTerminal(name); // 若这个视图已断开，activateTerminal 会自动重连
+    if (exists.alive) STATUS_LEFT.textContent = `tmux · ${name} · 已打开已有视图`;
+    return;
+  }
 
   const rec = {
     name,
