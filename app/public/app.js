@@ -1766,7 +1766,8 @@ async function openEmbeddedTmux(name) {
   dbg('activateTerminal 完成');
   STATUS_LEFT.textContent = `打开 ${name}：标签已就绪，正在 attach…`;
   term.onData((d) => {
-    queueRecInput(rec, d);
+    // xterm 自己的直发通道
+    if (noteInput(rec, d, 'xterm')) queueRecInput(rec, d);
   });
   // 文本统一由全局的 input/compositionend 处理器接管（见文件末尾）
   try {
@@ -2982,7 +2983,9 @@ SKILL_MORE.addEventListener('click', (e) => {
 FOCUS_TOGGLE.addEventListener('click', () => setFocusMode(!focusMode));
 // 终端文本统一通道：输入法提交与普通输入都从这里走，避免与 xterm 重复发送
 function sendComposedText(rec, data, ev) {
-  if (data) {
+  // 一次按键/一次输入法提交可能经由两条通道到达（xterm 直发、DOM input、compositionend），
+  // 只保留第一条，否则英文会变成 "PPMMSS"、中文提交也会重复
+  if (data && noteInput(rec, data, ev.type)) {
     queueRecInput(rec, data);
     flushRecInput(rec);
     try { rec.term.scrollToBottom(); } catch { /* 忽略 */ }
@@ -2990,6 +2993,17 @@ function sendComposedText(rec, data, ev) {
   try { ev.target.value = ''; } catch { /* 忽略 */ }
   ev.preventDefault();
   ev.stopImmediatePropagation();
+}
+
+// 跨通道去重：相同内容、不同来源、间隔 < 120ms 视为同一次输入，只发一次。
+// 同一来源的连续相同字符（快速连打 aa）不受影响。
+function noteInput(rec, data, source) {
+  if (!data) return false;
+  const now = Date.now();
+  const last = rec.lastInput;
+  if (last && last.text === data && last.source !== source && now - last.at < 120) return false;
+  rec.lastInput = { text: data, at: now, source };
+  return true;
 }
 document.addEventListener('input', (ev) => {
   const rec = ev.target && ev.target.__rec;
