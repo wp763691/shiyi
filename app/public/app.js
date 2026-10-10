@@ -1732,6 +1732,14 @@ async function openEmbeddedTmux(name) {
   rec.slot.className = 'term-slot';
   rec.slot.style.display = 'block';
   TERM_STAGE.appendChild(rec.slot);
+  // 终端区域尺寸变化（包括从隐藏变为可见）时重新适配。
+  // 否则会话在面板不可见时打开，行列不会同步给 pty，tmux 窗格与 xterm 尺寸就会不一致
+  try {
+    rec.ro = new ResizeObserver(() => {
+      if (rec.name === activeTermName) scheduleFit();
+    });
+    rec.ro.observe(rec.slot);
+  } catch { /* 环境不支持就退化为原来的时机 */ }
   const term = new Terminal({
     fontFamily: '"SF Mono", Menlo, Monaco, monospace',
     fontSize: 13,
@@ -1915,6 +1923,11 @@ async function connectTermStream(rec) {
             const bytes = new Uint8Array(raw.length);
             for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
             rec.term.write(bytes);
+            // 收到第一帧后再适配一次：确保 tmux 窗格与 xterm 的行列一致
+            if (!rec.fittedAfterData) {
+              rec.fittedAfterData = true;
+              setTimeout(() => { try { fitActiveTerminal(); } catch { /* 忽略 */ } }, 80);
+            }
           } catch { /* 忽略坏帧 */ }
         }
       }
@@ -1979,6 +1992,7 @@ function closeTermTab(name) {
   if (idx < 0) return;
   const rec = termSessions[idx];
   if (rec.timer) clearInterval(rec.timer);
+  try { rec.ro?.disconnect(); } catch { /* 忽略 */ }
   if (rec.id) {
     fetch('/api/terminal-close', {
       method: 'POST',
