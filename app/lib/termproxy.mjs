@@ -32,6 +32,7 @@ export async function openTmuxTerminal(sessionName) {
     ctrl,
     res: null,
     queue: [],
+    idleTimer: null,
     pending: [],
     pendingBytes: 0,
     flushTimer: null,
@@ -105,6 +106,7 @@ export function writeTerminalInput(id, b64) {
 export function closeTerminal(id) {
   const rec = sessions.get(id);
   if (!rec) return { ok: true };
+  if (rec.idleTimer) { clearTimeout(rec.idleTimer); rec.idleTimer = null; }
   try { rec.child.kill('SIGTERM'); } catch { /* 忽略 */ }
   return { ok: true };
 }
@@ -135,11 +137,22 @@ export function attachStream(id, res) {
   });
   res.write('retry: 2000\n\n');
   rec.res = res;
+  // 有新的消费者接入，取消待关闭的定时器
+  if (rec.idleTimer) { clearTimeout(rec.idleTimer); rec.idleTimer = null; }
   for (const b64 of rec.queue.splice(0)) {
     if (res.writableEnded === false) res.write(`data: ${b64}\n\n`);
   }
   res.on('close', () => {
-    rec.res = null;
+    if (rec.res === res) rec.res = null;
+    if (rec.res) return;
+    // 没有消费者了：宽限 20 秒仍无人接入就结束桥接，
+    // 否则它会一直挂着一个 tmux 客户端（拖住窗格尺寸），界面看起来像"连不上"
+    if (rec.idleTimer) clearTimeout(rec.idleTimer);
+    rec.idleTimer = setTimeout(() => {
+      if (rec.res || !rec.alive) return;
+      try { rec.child.kill('SIGTERM'); } catch { /* 忽略 */ }
+    }, 20000);
+    rec.idleTimer.unref?.();
   });
   return true;
 }
