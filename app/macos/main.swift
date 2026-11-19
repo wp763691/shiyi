@@ -19,6 +19,12 @@ final class DropWebView: WKWebView {
     return .copy
   }
 
+  // 应用在后台时，第一次点击窗口既激活应用、也要把这次点击交给网页内容，
+  // 否则点输入框只是把窗口激活，光标不会落进去，用户会以为"输入不了"
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+    return true
+  }
+
   override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
     let pb = sender.draggingPasteboard
     let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
@@ -32,7 +38,7 @@ final class DropWebView: WKWebView {
 // 拾忆 - macOS 本地应用封装
 // 启动时自动拉起内嵌的 Node 服务（server.mjs），并用原生 WebView 打开面板
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, NSWindowDelegate {
   private var window: NSWindow!
   private var webView: DropWebView!
   private var server: Process?
@@ -120,6 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     )
     window.title = "拾忆 · 会话面板"
     window.minSize = NSSize(width: 860, height: 560)
+    window.delegate = self
     window.center()
 
     let config = WKWebViewConfiguration()
@@ -159,6 +166,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     container.addSubview(webView)
     appLog("开始加载 http://127.0.0.1:8787/")
     webView.load(URLRequest(url: URL(string: "http://127.0.0.1:8787/")!))
+  }
+
+  // MARK: - 键盘焦点
+
+  /// 窗口重新成为 key window 时，如果焦点没落在网页里（刚切回应用、首次打开等），
+  /// 把键盘交还给 WKWebView，否则所有输入框都收不到敲击。
+  private func ensureWebFocus() {
+    guard let webView = webView else { return }
+    if let v = window.firstResponder as? NSView, v === webView || v.isDescendant(of: webView) {
+      return
+    }
+    window.makeFirstResponder(webView)
+    appLog("恢复 WebView 焦点")
+  }
+
+  func windowDidBecomeKey(_ notification: Notification) {
+    ensureWebFocus()
   }
 
   // MARK: - Server
@@ -296,6 +320,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     appLog("页面加载完成")
+    ensureWebFocus()
+  }
+
+  // 长时间运行 + 大量终端输出时，WKWebView 的 Web 内容进程可能被系统回收。
+  // 回收后页面还在但完全不响应输入，这里自动重载恢复。
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    appLog("Web 内容进程被系统回收，自动重新加载")
+    webView.reload()
   }
 
   func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
